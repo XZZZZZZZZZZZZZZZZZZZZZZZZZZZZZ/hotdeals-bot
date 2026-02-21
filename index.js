@@ -5,37 +5,36 @@ const crypto = require("crypto");
 const app = express();
 app.use(express.json());
 
-/* ===============================
+/* =========================
    הגדרות צ'אט
-================================ */
+========================= */
 const CHAT_ENDPOINT = "https://dilim.clickandgo.cfd/api/import/post";
 const CHAT_TOKEN = "987654321";
 
-/* ===============================
-   משתני סביבה (Railway Variables)
-================================ */
+/* =========================
+   משתני סביבה
+========================= */
 const ALI_APP_KEY = process.env.ALI_APP_KEY;
 const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
 const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-/* ===============================
+/* =========================
    מילות מפתח
-================================ */
+========================= */
 const KEYWORDS = [
-  "LED ceiling light",
-  "Bluetooth speaker",
-  "Smart watch",
-  "Wireless headphones",
   "security camera home",
   "CCTV camera",
   "car dash camera",
   "dash cam for car",
-  "home security system"
+  "LED ceiling light",
+  "Bluetooth speaker",
+  "Smart watch",
+  "Wireless headphones"
 ];
 
-/* ===============================
-   מילים חסומות (נשים/לבוש וכו')
-================================ */
+/* =========================
+   מילים חסומות
+========================= */
 const BLOCKED_WORDS = [
   "women",
   "woman",
@@ -52,41 +51,40 @@ const BLOCKED_WORDS = [
   "sexy"
 ];
 
-/* ===============================
+/* =========================
    בדיקת שעות פרסום
-================================ */
+========================= */
 function isAllowedTime() {
   const now = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Jerusalem" })
   );
 
   const hour = now.getHours();
-  const day = now.getDay();
+  const day = now.getDay(); // 0=ראשון ... 6=שבת
 
-  // שבת לפני 23:00 אסור
-  if (day === 6 && hour < 23) return false;
-
-  // מוצ"ש 23:00–01:00
-  if (day === 6 && hour >= 23) return true;
-
-  // ראשון–חמישי 10:00–01:00
-  if (day >= 0 && day <= 4) {
-    if (hour >= 10 || hour < 1) return true;
-    return false;
+  // שבת – מותר רק מ-23:00 (מוצ"ש)
+  if (day === 6) {
+    return hour >= 23;
   }
 
-  // שישי 10:00–13:00
+  // שישי – 10:00 עד 13:00
   if (day === 5) {
-    if (hour >= 10 && hour < 13) return true;
+    return hour >= 10 && hour < 13;
+  }
+
+  // ראשון–חמישי
+  if (day >= 0 && day <= 4) {
+    if (hour >= 10) return true;   // 10:00–23:59
+    if (hour < 1) return true;     // 00:00–00:59
     return false;
   }
 
   return false;
 }
 
-/* ===============================
-   יצירת חתימה ל-AliExpress
-================================ */
+/* =========================
+   יצירת חתימה ל-Ali
+========================= */
 function generateSign(params) {
   const sortedKeys = Object.keys(params).sort();
   let baseString = ALI_APP_SECRET;
@@ -100,20 +98,20 @@ function generateSign(params) {
   return crypto.createHash("md5").update(baseString).digest("hex").toUpperCase();
 }
 
-/* ===============================
-   בדיקת מוצר אם מותר
-================================ */
+/* =========================
+   סינון מוצר
+========================= */
 function isProductAllowed(product) {
   const title = product.product_title?.toLowerCase() || "";
   return !BLOCKED_WORDS.some(word => title.includes(word));
 }
 
-/* ===============================
-   משיכת מוצר מ-AliExpress
-================================ */
+/* =========================
+   משיכת מוצר
+========================= */
 async function fetchAliProduct() {
   const keyword = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
-  console.log("מחפש לפי מילת מפתח:", keyword);
+  console.log("🔎 מחפש לפי:", keyword);
 
   const params = {
     method: "aliexpress.affiliate.product.query",
@@ -139,26 +137,27 @@ async function fetchAliProduct() {
     response.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products;
 
   if (!products || products.length === 0) {
-    console.log("לא נמצאו מוצרים");
+    console.log("❌ לא נמצאו מוצרים");
     return null;
   }
 
   const filtered = products.filter(isProductAllowed);
 
   if (filtered.length === 0) {
-    console.log("כל המוצרים נפסלו בסינון");
+    console.log("❌ כל המוצרים נפסלו בסינון");
     return null;
   }
 
   return filtered[Math.floor(Math.random() * filtered.length)];
 }
 
-/* ===============================
-   שליחת דיל לצ'אט
-================================ */
-async function postDeal() {
-  if (!isAllowedTime()) {
-    console.log("מחוץ לשעות פרסום");
+/* =========================
+   שליחת דיל
+========================= */
+async function postDeal(ignoreTime = false) {
+
+  if (!ignoreTime && !isAllowedTime()) {
+    console.log("⏳ מחוץ לשעות פרסום");
     return;
   }
 
@@ -172,7 +171,7 @@ async function postDeal() {
 💡 דיל חם במיוחד!
 
 ⭐ דירוג: ${product.evaluate_rate}
-💰 מחיר מיוחד: ${product.sale_price}$
+💰 מחיר: ${product.sale_price}$
 
 📦 משלוח ישיר עד הבית
 🔥 מלאי מוגבל – כדאי למהר!
@@ -198,30 +197,30 @@ ${product.product_detail_url}
 
     console.log("✅ דיל נשלח בהצלחה");
   } catch (err) {
-    console.error("❌ שגיאה בשליחה:", err.response?.data || err.message);
+    console.error("❌ שגיאה:", err.response?.data || err.message);
   }
 }
 
-/* ===============================
-   שליחה אוטומטית כל 20 דקות
-================================ */
+/* =========================
+   שליחה כל 20 דקות
+========================= */
 postDeal();
 setInterval(postDeal, 20 * 60 * 1000);
 
-/* ===============================
-   שליחה ידנית לבדיקה
-================================ */
+/* =========================
+   שליחה ידנית (עוקף שעות)
+========================= */
 app.get("/force", async (req, res) => {
-  console.log("הפעלת שליחה ידנית");
-  await postDeal();
+  console.log("🚀 הפעלת שליחה ידנית");
+  await postDeal(true);
   res.send("ניסיון שליחה הופעל");
 });
 
-/* ===============================
+/* =========================
    שרת
-================================ */
+========================= */
 app.get("/", (req, res) => {
-  res.send("HotDeals Bot is running 🚀");
+  res.send("🚀 בוט HotDeals פועל");
 });
 
 const PORT = process.env.PORT || 3000;
