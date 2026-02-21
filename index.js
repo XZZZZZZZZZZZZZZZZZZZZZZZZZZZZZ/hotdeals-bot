@@ -13,9 +13,21 @@ const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
 
 function getTimestamp() {
   const now = new Date();
-  const pad = n => n < 10 ? "0" + n : n;
+  const pad = n => (n < 10 ? "0" + n : n);
 
-  return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  return (
+    now.getFullYear() +
+    "-" +
+    pad(now.getMonth() + 1) +
+    "-" +
+    pad(now.getDate()) +
+    " " +
+    pad(now.getHours()) +
+    ":" +
+    pad(now.getMinutes()) +
+    ":" +
+    pad(now.getSeconds())
+  );
 }
 
 function sign(params) {
@@ -35,27 +47,32 @@ async function sendDeal() {
   try {
 
     const params = {
-      method: "aliexpress.affiliate.product.query",
+      method: "aliexpress.affiliate.product.search",
       app_key: ALI_APP_KEY,
       timestamp: getTimestamp(),
       format: "json",
       v: "2.0",
       sign_method: "md5",
-      keywords: "security camera",
+      keywords: "phone",
       tracking_id: ALI_TRACKING_ID,
-      page_size: 5,
-      fields: "product_title,product_detail_url,sale_price"
+      page_size: 5
     };
 
     params.sign = sign(params);
 
-    const response = await axios.get("https://api-sg.aliexpress.com/sync", { params });
+    const response = await axios.get(
+      "https://api-sg.aliexpress.com/sync",
+      { params }
+    );
+
+    console.log("API RESPONSE:", JSON.stringify(response.data));
 
     const products =
-      response.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products;
+      response.data?.aliexpress_affiliate_product_search_response
+        ?.resp_result?.result?.products;
 
     if (!products || products.length === 0) {
-      console.log("לא נמצאו מוצרים");
+      console.log("לא נמצאו מוצרים ❌");
       return;
     }
 
@@ -85,7 +102,7 @@ ${p.product_detail_url}
       }
     );
 
-    console.log("נשלח בהצלחה");
+    console.log("נשלח בהצלחה ✅");
 
   } catch (err) {
     console.log("שגיאה:", err.response?.data || err.message);
@@ -96,6 +113,10 @@ ${p.product_detail_url}
 sendDeal();
 
 app.get("/", (req, res) => {
-  res.send("הבוט עובד");
+  res.send("בדיקת API פעילה");
 });
 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Server running");
+});
