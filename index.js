@@ -10,7 +10,9 @@ const CHAT_TOKEN = "987654321";
 const ALI_APP_KEY = process.env.ALI_APP_KEY;
 const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
 const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
-
+console.log("APP KEY:", process.env.ALI_APP_KEY);
+console.log("SECRET:", process.env.ALI_APP_SECRET);
+console.log("TRACKING:", process.env.ALI_TRACKING_ID);
 function getTimestamp() {
   const now = new Date();
   const pad = n => (n < 10 ? "0" + n : n);
