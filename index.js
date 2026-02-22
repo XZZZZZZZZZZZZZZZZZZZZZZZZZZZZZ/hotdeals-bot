@@ -1,116 +1,114 @@
-const express = require("express");
 const axios = require("axios");
 const crypto = require("crypto");
+const express = require("express");
 
 const app = express();
+const PORT = process.env.PORT || 8080;
 
-const CHAT_ENDPOINT = "https://dilim.clickandgo.cfd/api/import/post";
-const CHAT_TOKEN = "987654321";
+/* ===============================
+   כאן אתה מוסיף מילות מפתח בקלות
+================================= */
 
-// משתנים מהשרת
+const KEYWORDS = [
+  "home security camera",
+  "car camera",
+  "wireless security camera",
+  "dash cam car",
+  "indoor security camera"
+];
+
+/* =============================== */
+
 const ALI_APP_KEY = process.env.ALI_APP_KEY;
 const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
 const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-// ===== פונקציית חתימה =====
-function sign(params) {
-  const sortedKeys = Object.keys(params).sort();
-  let baseString = ALI_APP_SECRET;
+/* ========= פונקציות עזר ========= */
 
-  sortedKeys.forEach(key => {
-    baseString += key + params[key];
-  });
-
-  baseString += ALI_APP_SECRET;
-
-  return crypto.createHash("md5").update(baseString).digest("hex").toUpperCase();
+function getTimestamp() {
+  const now = new Date();
+  return now.toISOString().replace(/[-:T]/g, "").split(".")[0];
 }
 
-// ===== חיפוש מוצרים =====
-async function fetchProducts() {
+function sign(params) {
+  const sortedKeys = Object.keys(params).sort();
+  let stringToSign = ALI_APP_SECRET;
+  sortedKeys.forEach(key => {
+    stringToSign += key + params[key];
+  });
+  stringToSign += ALI_APP_SECRET;
+
+  return crypto
+    .createHash("md5")
+    .update(stringToSign)
+    .digest("hex")
+    .toUpperCase();
+}
+
+/* ========= חיפוש מוצר ========= */
+
+async function searchProduct(keyword) {
+  const params = {
+    method: "aliexpress.affiliate.product.query",
+    app_key: ALI_APP_KEY,
+    sign_method: "md5",
+    timestamp: getTimestamp(),
+    format: "json",
+    v: "2.0",
+    keywords: keyword,
+    tracking_id: ALI_TRACKING_ID,
+    fields: "product_title,product_main_image_url,sale_price,product_detail_url"
+  };
+
+  params.sign = sign(params);
+
   try {
-    console.log("=== התחלת בקשת API ===");
-
-    const params = {
-      app_key: ALI_APP_KEY,
-      method: "aliexpress.affiliate.product.search",
-      sign_method: "md5",
-      timestamp: new Date().toISOString(),
-      format: "json",
-      v: "2.0",
-      keywords: "smart camera home",
-      tracking_id: ALI_TRACKING_ID,
-      page_no: 1,
-      page_size: 5
-    };
-
-    params.sign = sign(params);
-
-    const response = await axios.get("https://api-sg.aliexpress.com/sync", {
-      params
-    });
-
-    console.log("תגובה מלאה:");
-    console.log(JSON.stringify(response.data, null, 2));
-
-    const products =
-      response.data?.aliexpress_affiliate_product_search_response
-        ?.resp_result?.result?.products;
-
-    if (!products || products.length === 0) {
-      console.log("❌ לא נמצאו מוצרים");
-      return;
-    }
-
-    const product = products[0];
-
-    const message = `
-🔥 ${product.product_title}
-
-💰 מחיר: ${product.target_app_sale_price}
-⭐ דירוג: ${product.evaluate_rate}
-
-🔗 ${product.promotion_link}
-`;
-
-    await axios.post(
-      CHAT_ENDPOINT,
-      {
-        text: message,
-        author: "HotDeals Bot",
-        timestamp: new Date().toISOString()
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": CHAT_TOKEN
-        }
-      }
+    const response = await axios.get(
+      "https://gw.api.alibaba.com/openapi/param2/2/portals.open/api.listPromotionProduct/" + ALI_APP_KEY,
+      { params }
     );
 
-    console.log("✅ נשלח בהצלחה לצ'אט");
+    const products =
+      response.data?.result?.products || [];
 
-  } catch (error) {
-    console.log("❌ שגיאה:");
-    if (error.response) {
-      console.log(JSON.stringify(error.response.data, null, 2));
-    } else {
-      console.log(error.message);
+    if (!products.length) {
+      console.log("❌ לא נמצאו מוצרים עבור:", keyword);
+      return null;
     }
+
+    return products[Math.floor(Math.random() * products.length)];
+  } catch (error) {
+    console.log("❌ שגיאת API:", error.response?.data || error.message);
+    return null;
   }
 }
 
-// ===== שרת =====
-app.get("/", (req, res) => {
-  res.send("HotDeals Bot is running 🚀");
+/* ========= שליחה לבדיקה ========= */
+
+async function run() {
+  const randomKeyword =
+    KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
+
+  console.log("🔍 מחפש לפי:", randomKeyword);
+
+  const product = await searchProduct(randomKeyword);
+
+  if (!product) return;
+
+  console.log("✅ מוצר נמצא:");
+  console.log("כותרת:", product.product_title);
+  console.log("מחיר:", product.sale_price);
+  console.log("תמונה:", product.product_main_image_url);
+  console.log("קישור:", product.product_detail_url);
+}
+
+/* ========= הפעלה ========= */
+
+app.get("/force", async (req, res) => {
+  await run();
+  res.send("בוצעה בדיקה – תראה בלוגים");
 });
 
-// שליחה אוטומטית אחרי 10 שניות
-setTimeout(() => {
-  fetchProducts();
-}, 10000);
-
-const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log("שרת פועל על פורט " + PORT);
+  console.log("🚀 שרת פעיל על פורט", PORT);
 });
