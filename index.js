@@ -4,141 +4,153 @@ const crypto = require("crypto");
 
 const app = express();
 
-const PORT = process.env.PORT || 8080;
+/* ===========================
+   משתנים מהשרת (Railway)
+=========================== */
 
 const ALI_APP_KEY = process.env.ALI_APP_KEY;
 const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
 const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-const CHAT_ENDPOINT = process.env.CHAT_ENDPOINT;
-const CHAT_TOKEN = process.env.CHAT_TOKEN;
+/* ===========================
+   הגדרות
+=========================== */
 
-// =====================
-// 🔑 מילות מפתח לחיפוש
-// =====================
+const PORT = process.env.PORT || 8080;
+
+// כאן אפשר להוסיף מילות מפתח בעתיד
 const KEYWORDS = [
-  "wireless camera",
-  "car camera",
   "security camera",
+  "car camera",
+  "wireless camera"
 ];
 
-// =====================
-// חתימה ל־AliExpress
-// =====================
+/* ===========================
+   חתימה ל-AliExpress
+=========================== */
+
 function sign(params) {
-  const sorted = Object.keys(params).sort();
-  let baseString = ALI_APP_SECRET;
+  const sorted = Object.keys(params)
+    .sort()
+    .map(key => key + params[key])
+    .join("");
 
-  sorted.forEach(key => {
-    baseString += key + params[key];
-  });
-
-  baseString += ALI_APP_SECRET;
+  const signStr = ALI_APP_SECRET + sorted + ALI_APP_SECRET;
 
   return crypto
     .createHash("md5")
-    .update(baseString)
+    .update(signStr)
     .digest("hex")
     .toUpperCase();
 }
 
-// =====================
-// חיפוש מוצר
-// =====================
-async function searchProduct(keyword) {
-  const timestamp = new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14);
+/* ===========================
+   שליפת מוצרים חמים
+=========================== */
+
+async function getHotProducts() {
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[-:T.]/g, "")
+    .slice(0, 14);
 
   const params = {
-    method: "aliexpress.affiliate.product.query",
+    method: "aliexpress.affiliate.hotproduct.query",
     app_key: ALI_APP_KEY,
     sign_method: "md5",
     timestamp: timestamp,
     format: "json",
     v: "2.0",
-    keywords: keyword,
     tracking_id: ALI_TRACKING_ID,
   };
 
   params.sign = sign(params);
 
-  const response = await axios.get("https://api-sg.aliexpress.com/sync", {
-    params,
-  });
+  const response = await axios.get(
+    "https://api-sg.aliexpress.com/sync",
+    { params }
+  );
 
   return response.data;
 }
 
-// =====================
-// שליחה לצ'אט
-// =====================
-async function sendToChat(text) {
+/* ===========================
+   שליחה לצ'אט
+=========================== */
+
+async function sendToChat(product) {
+  const CHAT_ENDPOINT =
+    "https://dilim.clickandgo.cfd/api/import/post";
+  const CHAT_TOKEN = "987654321"; // אם צריך לשנות תשנה כאן
+
+  const message = `
+🔥 ${product.product_title}
+
+💰 מחיר: $${product.target_app_sale_price}
+
+👉 קישור:
+${product.promotion_link}
+`;
+
   await axios.post(
     CHAT_ENDPOINT,
     {
       token: CHAT_TOKEN,
-      message: text,
-    },
-    {
-      headers: { "Content-Type": "application/json" },
+      message: message,
     }
   );
 }
 
-// =====================
-// חיפוש ושליחה
-// =====================
+/* ===========================
+   הפעלת הבוט
+=========================== */
+
 async function runBot() {
   console.log("=== התחלת חיפוש מוצרים ===");
 
-  for (let keyword of KEYWORDS) {
-    try {
-      const data = await searchProduct(keyword);
+  try {
+    const data = await getHotProducts();
 
-      const products =
-        data?.aliexpress_affiliate_product_query_response?.resp_result
-          ?.result?.products;
+    const products =
+      data?.aliexpress_affiliate_hotproduct_query_response
+        ?.resp_result?.result?.products;
 
-      if (products && products.length > 0) {
-        const product = products[0];
-
-        const message = `
-🔥 דיל חדש!
-
-📦 ${product.product_title}
-💰 מחיר: ${product.target_sale_price}
-🔗 ${product.promotion_link}
-        `;
-
-        await sendToChat(message);
-
-        console.log("נשלח מוצר:", keyword);
-        return;
-      }
-    } catch (err) {
-      console.log("שגיאה במילת מפתח:", keyword);
+    if (!products || products.length === 0) {
+      console.log("לא נמצאו מוצרים");
+      return;
     }
-  }
 
-  console.log("לא נמצאו מוצרים");
+    const product = products[0];
+
+    console.log("נמצא מוצר:", product.product_title);
+
+    await sendToChat(product);
+
+    console.log("נשלח בהצלחה ✅");
+
+  } catch (err) {
+    console.log("שגיאת API ❌");
+    console.log(err.response?.data || err.message);
+  }
 }
 
-// =====================
-// בדיקת דפדפן
-// =====================
+/* ===========================
+   ראוטים
+=========================== */
+
 app.get("/", (req, res) => {
-  res.send("הבוט עובד תקין 🚀");
+  res.send("הבוט פעיל 🚀");
 });
 
-// =====================
-// שליחה ידנית לבדיקה
-// =====================
 app.get("/force", async (req, res) => {
   await runBot();
-  res.send("ניסיון שליחה בוצע");
+  res.send("ניסיון שליחה הופעל");
 });
 
-// =====================
+/* ===========================
+   הפעלה
+=========================== */
 
 app.listen(PORT, () => {
-  console.log("שרת פועל על פורט", PORT);
+  console.log("שרת פועל על פורט " + PORT);
 });
