@@ -10,9 +10,12 @@ const CHAT_TOKEN = "987654321";
 const ALI_APP_KEY = process.env.ALI_APP_KEY;
 const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
 const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
-console.log("APP KEY:", process.env.ALI_APP_KEY);
-console.log("SECRET:", process.env.ALI_APP_SECRET);
-console.log("TRACKING:", process.env.ALI_TRACKING_ID);
+
+// בדיקה שהמשתנים קיימים
+console.log("APP KEY:", ALI_APP_KEY);
+console.log("SECRET:", ALI_APP_SECRET ? "OK" : "MISSING");
+console.log("TRACKING:", ALI_TRACKING_ID);
+
 function getTimestamp() {
   const now = new Date();
   const pad = n => (n < 10 ? "0" + n : n);
@@ -63,7 +66,7 @@ async function sendDeal() {
     params.sign = sign(params);
 
     const response = await axios.get(
-      "https://api-sg.aliexpress.com/sync",
+      "https://api.aliexpress.com/sync", // 🔥 endpoint מתוקן
       { params }
     );
 
@@ -115,7 +118,7 @@ ${p.product_detail_url}
 sendDeal();
 
 app.get("/", (req, res) => {
-  res.send("בדיקת API פעילה");
+  res.send("בדיקה פעילה");
 });
 
 const PORT = process.env.PORT || 3000;
