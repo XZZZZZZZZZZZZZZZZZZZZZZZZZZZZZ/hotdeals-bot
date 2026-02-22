@@ -3,134 +3,138 @@ const axios = require("axios");
 const crypto = require("crypto");
 
 const app = express();
+app.use(express.json());
+
+/* ============================= */
+/*      הגדרות כלליות            */
+/* ============================= */
 
 const CHAT_ENDPOINT = "https://dilim.clickandgo.cfd/api/import/post";
 const CHAT_TOKEN = "987654321";
 
-// ===== משתני סביבה =====
 const ALI_APP_KEY = process.env.ALI_APP_KEY;
 const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
 const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-console.log("APP_KEY:", ALI_APP_KEY ? "OK" : "MISSING");
-console.log("APP_SECRET:", ALI_APP_SECRET ? "OK" : "MISSING");
-console.log("TRACKING_ID:", ALI_TRACKING_ID ? "OK" : "MISSING");
+console.log("APP_KEY:", ALI_APP_KEY ? "קיים" : "חסר");
+console.log("APP_SECRET:", ALI_APP_SECRET ? "קיים" : "חסר");
+console.log("TRACKING_ID:", ALI_TRACKING_ID ? "קיים" : "חסר");
 
-// ===== פונקציית חתימה =====
+/* ============================= */
+/*        חתימה ל־Ali            */
+/* ============================= */
+
 function sign(params) {
-  const sorted = Object.keys(params)
-    .sort()
-    .map(key => key + params[key])
-    .join("");
+  const sortedKeys = Object.keys(params).sort();
+  let base = ALI_APP_SECRET;
 
-  const signStr = ALI_APP_SECRET + sorted + ALI_APP_SECRET;
+  sortedKeys.forEach((key) => {
+    base += key + params[key];
+  });
 
-  return crypto
-    .createHash("md5")
-    .update(signStr)
-    .digest("hex")
-    .toUpperCase();
+  base += ALI_APP_SECRET;
+
+  return crypto.createHmac("sha256", ALI_APP_SECRET).update(base).digest("hex").toUpperCase();
 }
 
-// ===== שליפת מוצרים =====
-async function fetchAliProducts() {
+/* ============================= */
+/*      חיפוש מוצרים             */
+/* ============================= */
+
+async function searchProducts() {
   try {
-    const timestamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0];
+    console.log("מחפש מוצרים... 🔎");
 
     const params = {
-      app_key: ALI_APP_KEY,
       method: "aliexpress.affiliate.product.search",
-      sign_method: "md5",
-      timestamp: timestamp,
+      app_key: ALI_APP_KEY,
+      timestamp: Date.now(),
       format: "json",
       v: "2.0",
-      keywords: "מצלמות אבטחה לבית מצלמות לרכב",
-      page_size: 5,
-      tracking_id: ALI_TRACKING_ID
+      sign_method: "sha256",
+      keywords: "home camera",
+      fields: "product_title,product_main_image_url,sale_price,product_detail_url"
     };
 
     params.sign = sign(params);
 
-    const response = await axios.get(
-      "https://api-sg.aliexpress.com/sync",
-      { params }
-    );
+    const response = await axios.get("https://api-sg.aliexpress.com/sync", {
+      params,
+    });
 
     console.log("API RESPONSE:", JSON.stringify(response.data));
 
     const products =
-      response.data?.aliexpress_affiliate_product_search_response
-        ?.resp_result?.result?.products;
+      response.data?.aliexpress_affiliate_product_search_response?.resp_result?.result?.products;
 
     if (!products || products.length === 0) {
       console.log("❌ לא נמצאו מוצרים");
-      return null;
+      return;
     }
 
-    // מסנן מוצרים לא רצויים
-    const filtered = products.filter(p => {
-      const title = (p.product_title || "").toLowerCase();
-      return !title.includes("women") && !title.includes("girl");
-    });
+    const product = products[0];
 
-    if (filtered.length === 0) {
-      console.log("❌ כל המוצרים סוננו");
-      return null;
-    }
-
-    return filtered[0];
+    await sendToChat(product);
 
   } catch (err) {
-    console.log("❌ שגיאת API:", err.response?.data || err.message);
-    return null;
+    console.log("❌ שגיאת API:");
+    console.log(err.response?.data || err.message);
   }
 }
 
-// ===== שליחה לצ'אט =====
-async function sendToChat(product) {
-  if (!product) return;
+/* ============================= */
+/*      שליחה לצ'אט              */
+/* ============================= */
 
+async function sendToChat(product) {
   const message = `
 🔥 דיל חדש!
-📦 ${product.product_title}
 
-💰 מחיר: $${product.target_sale_price}
+📦 ${product.product_title}
+💰 מחיר: ${product.sale_price}
 
 🔗 קישור:
-${product.promotion_link}
+${product.product_detail_url}
 `;
 
-  await axios.post(
-    CHAT_ENDPOINT,
-    {
-      text: message,
-      author: "HotDeals Bot",
-      timestamp: new Date().toISOString()
-    },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": CHAT_TOKEN
+  try {
+    await axios.post(
+      CHAT_ENDPOINT,
+      {
+        text: message,
+        author: "HotDeals Bot",
+        timestamp: new Date().toISOString(),
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": CHAT_TOKEN,
+        },
       }
-    }
-  );
+    );
 
-  console.log("✅ נשלח לצ'אט");
+    console.log("✅ נשלח בהצלחה!");
+  } catch (err) {
+    console.log("❌ שגיאה בשליחה לצ'אט:", err.message);
+  }
 }
 
-// ===== שליחה מיידית לבדיקה =====
+/* ============================= */
+/*      בדיקה מידית              */
+/* ============================= */
+
 app.get("/force", async (req, res) => {
-  const product = await fetchAliProducts();
-  await sendToChat(product);
-  res.send("בוצעה בדיקה");
+  await searchProducts();
+  res.send("בוצע ניסיון שליחה");
 });
 
-// ===== בדיקה שהשרת עובד =====
+/* ============================= */
+
 app.get("/", (req, res) => {
-  res.send("🚀 HotDeals Bot פועל");
+  res.send("HotDeals Bot Running 🚀");
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("שרת פועל על פורט " + PORT);
+  console.log("שרת פועל על פורט", PORT);
 });
