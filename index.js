@@ -7,55 +7,51 @@ const app = express();
 const CHAT_ENDPOINT = "https://dilim.clickandgo.cfd/api/import/post";
 const CHAT_TOKEN = "987654321";
 
+// משתנים מהשרת
 const ALI_APP_KEY = process.env.ALI_APP_KEY;
 const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
 const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
 
+// ===== פונקציית חתימה =====
 function sign(params) {
   const sortedKeys = Object.keys(params).sort();
-  let base = ALI_APP_SECRET;
+  let baseString = ALI_APP_SECRET;
 
   sortedKeys.forEach(key => {
-    base += key + params[key];
+    baseString += key + params[key];
   });
 
-  base += ALI_APP_SECRET;
+  baseString += ALI_APP_SECRET;
 
-  return crypto
-    .createHash("sha256")
-    .update(base)
-    .digest("hex")
-    .toUpperCase();
+  return crypto.createHash("md5").update(baseString).digest("hex").toUpperCase();
 }
 
-async function searchAndSend() {
+// ===== חיפוש מוצרים =====
+async function fetchProducts() {
   try {
+    console.log("=== התחלת בקשת API ===");
 
     const params = {
-      method: "aliexpress.affiliate.product.search",
       app_key: ALI_APP_KEY,
+      method: "aliexpress.affiliate.product.search",
+      sign_method: "md5",
       timestamp: new Date().toISOString(),
       format: "json",
       v: "2.0",
-      sign_method: "sha256",
-      keywords: "security camera",
+      keywords: "smart camera home",
       tracking_id: ALI_TRACKING_ID,
-      target_currency: "USD",
-      target_language: "EN",
-      page_size: 5,
-      fields: "product_title,product_main_image_url,sale_price,product_detail_url"
+      page_no: 1,
+      page_size: 5
     };
 
     params.sign = sign(params);
 
-    const response = await axios.get(
-      "https://api-sg.aliexpress.com/sync",
-      { params }
-    );
+    const response = await axios.get("https://api-sg.aliexpress.com/sync", {
+      params
+    });
 
-    console.log("=== API RESPONSE START ===");
+    console.log("תגובה מלאה:");
     console.log(JSON.stringify(response.data, null, 2));
-    console.log("=== API RESPONSE END ===");
 
     const products =
       response.data?.aliexpress_affiliate_product_search_response
@@ -69,11 +65,12 @@ async function searchAndSend() {
     const product = products[0];
 
     const message = `
-✨ דיל חם!
+🔥 ${product.product_title}
 
-📦 ${product.product_title}
-💰 ${product.sale_price} $
-🔗 ${product.product_detail_url}
+💰 מחיר: ${product.target_app_sale_price}
+⭐ דירוג: ${product.evaluate_rate}
+
+🔗 ${product.promotion_link}
 `;
 
     await axios.post(
@@ -91,24 +88,29 @@ async function searchAndSend() {
       }
     );
 
-    console.log("✅ נשלח בהצלחה");
+    console.log("✅ נשלח בהצלחה לצ'אט");
 
-  } catch (err) {
+  } catch (error) {
     console.log("❌ שגיאה:");
-    console.log(err.response?.data || err.message);
+    if (error.response) {
+      console.log(JSON.stringify(error.response.data, null, 2));
+    } else {
+      console.log(error.message);
+    }
   }
 }
 
+// ===== שרת =====
 app.get("/", (req, res) => {
-  res.send("Bot Running");
+  res.send("HotDeals Bot is running 🚀");
 });
 
-app.get("/force", async (req, res) => {
-  await searchAndSend();
-  res.send("בדיקה הופעלה");
-});
+// שליחה אוטומטית אחרי 10 שניות
+setTimeout(() => {
+  fetchProducts();
+}, 10000);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log("שרת פועל על פורט " + PORT);
 });
