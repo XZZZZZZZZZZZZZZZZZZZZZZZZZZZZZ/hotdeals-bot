@@ -7,66 +7,52 @@ const app = express();
 const CHAT_ENDPOINT = "https://dilim.clickandgo.cfd/api/import/post";
 const CHAT_TOKEN = "987654321";
 
+// ===== משתני סביבה =====
 const ALI_APP_KEY = process.env.ALI_APP_KEY;
 const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
 const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-// בדיקה שהמשתנים קיימים
-console.log("APP KEY:", ALI_APP_KEY);
-console.log("SECRET:", ALI_APP_SECRET ? "OK" : "MISSING");
-console.log("TRACKING:", ALI_TRACKING_ID);
+console.log("APP_KEY:", ALI_APP_KEY ? "OK" : "MISSING");
+console.log("APP_SECRET:", ALI_APP_SECRET ? "OK" : "MISSING");
+console.log("TRACKING_ID:", ALI_TRACKING_ID ? "OK" : "MISSING");
 
-function getTimestamp() {
-  const now = new Date();
-  const pad = n => (n < 10 ? "0" + n : n);
-
-  return (
-    now.getFullYear() +
-    "-" +
-    pad(now.getMonth() + 1) +
-    "-" +
-    pad(now.getDate()) +
-    " " +
-    pad(now.getHours()) +
-    ":" +
-    pad(now.getMinutes()) +
-    ":" +
-    pad(now.getSeconds())
-  );
-}
-
+// ===== פונקציית חתימה =====
 function sign(params) {
-  const sorted = Object.keys(params).sort();
-  let base = ALI_APP_SECRET;
+  const sorted = Object.keys(params)
+    .sort()
+    .map(key => key + params[key])
+    .join("");
 
-  sorted.forEach(k => {
-    base += k + params[k];
-  });
+  const signStr = ALI_APP_SECRET + sorted + ALI_APP_SECRET;
 
-  base += ALI_APP_SECRET;
-
-  return crypto.createHash("md5").update(base).digest("hex").toUpperCase();
+  return crypto
+    .createHash("md5")
+    .update(signStr)
+    .digest("hex")
+    .toUpperCase();
 }
 
-async function sendDeal() {
+// ===== שליפת מוצרים =====
+async function fetchAliProducts() {
   try {
+    const timestamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0];
 
     const params = {
-      method: "aliexpress.affiliate.product.search",
       app_key: ALI_APP_KEY,
-      timestamp: getTimestamp(),
+      method: "aliexpress.affiliate.product.search",
+      sign_method: "md5",
+      timestamp: timestamp,
       format: "json",
       v: "2.0",
-      sign_method: "md5",
-      keywords: "phone",
-      tracking_id: ALI_TRACKING_ID,
-      page_size: 5
+      keywords: "מצלמות אבטחה לבית מצלמות לרכב",
+      page_size: 5,
+      tracking_id: ALI_TRACKING_ID
     };
 
     params.sign = sign(params);
 
     const response = await axios.get(
-      "https://api.aliexpress.com/sync", // 🔥 endpoint מתוקן
+      "https://api-sg.aliexpress.com/sync",
       { params }
     );
 
@@ -77,51 +63,74 @@ async function sendDeal() {
         ?.resp_result?.result?.products;
 
     if (!products || products.length === 0) {
-      console.log("לא נמצאו מוצרים ❌");
-      return;
+      console.log("❌ לא נמצאו מוצרים");
+      return null;
     }
 
-    const p = products[0];
+    // מסנן מוצרים לא רצויים
+    const filtered = products.filter(p => {
+      const title = (p.product_title || "").toLowerCase();
+      return !title.includes("women") && !title.includes("girl");
+    });
 
-    const text = `
-🔥 ${p.product_title}
+    if (filtered.length === 0) {
+      console.log("❌ כל המוצרים סוננו");
+      return null;
+    }
 
-💰 מחיר: ${p.sale_price}$
-
-🛒 קישור:
-${p.product_detail_url}
-`;
-
-    await axios.post(
-      CHAT_ENDPOINT,
-      {
-        text,
-        author: "HotDeals Bot",
-        timestamp: new Date().toISOString()
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": CHAT_TOKEN
-        }
-      }
-    );
-
-    console.log("נשלח בהצלחה ✅");
+    return filtered[0];
 
   } catch (err) {
-    console.log("שגיאה:", err.response?.data || err.message);
+    console.log("❌ שגיאת API:", err.response?.data || err.message);
+    return null;
   }
 }
 
-// שולח מיד כשהשרת עולה
-sendDeal();
+// ===== שליחה לצ'אט =====
+async function sendToChat(product) {
+  if (!product) return;
 
+  const message = `
+🔥 דיל חדש!
+📦 ${product.product_title}
+
+💰 מחיר: $${product.target_sale_price}
+
+🔗 קישור:
+${product.promotion_link}
+`;
+
+  await axios.post(
+    CHAT_ENDPOINT,
+    {
+      text: message,
+      author: "HotDeals Bot",
+      timestamp: new Date().toISOString()
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": CHAT_TOKEN
+      }
+    }
+  );
+
+  console.log("✅ נשלח לצ'אט");
+}
+
+// ===== שליחה מיידית לבדיקה =====
+app.get("/force", async (req, res) => {
+  const product = await fetchAliProducts();
+  await sendToChat(product);
+  res.send("בוצעה בדיקה");
+});
+
+// ===== בדיקה שהשרת עובד =====
 app.get("/", (req, res) => {
-  res.send("בדיקה פעילה");
+  res.send("🚀 HotDeals Bot פועל");
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Server running");
+  console.log("שרת פועל על פורט " + PORT);
 });
