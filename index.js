@@ -5,59 +5,50 @@ const crypto = require("crypto");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-const ALI_APP_KEY = process.env.ALI_APP_KEY;
-const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
-const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
+// ====== משתנים מהסביבה (Railway) ======
+const APP_KEY = process.env.ALI_APP_KEY;
+const APP_SECRET = process.env.ALI_APP_SECRET;
+const TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-const KEYWORDS = "wireless earbuds";
-
-function getTimestamp() {
-  const now = new Date();
-  const pad = n => (n < 10 ? "0" + n : n);
-  return (
-    now.getUTCFullYear() +
-    "-" +
-    pad(now.getUTCMonth() + 1) +
-    "-" +
-    pad(now.getUTCDate()) +
-    " " +
-    pad(now.getUTCHours()) +
-    ":" +
-    pad(now.getUTCMinutes()) +
-    ":" +
-    pad(now.getUTCSeconds())
-  );
-}
-
+// ====== פונקציית חתימה ======
 function sign(params) {
   const sortedKeys = Object.keys(params).sort();
-  let stringToSign = ALI_APP_SECRET;
+  let baseString = APP_SECRET;
 
-  sortedKeys.forEach(key => {
-    stringToSign += key + params[key];
+  sortedKeys.forEach((key) => {
+    baseString += key + params[key];
   });
 
-  stringToSign += ALI_APP_SECRET;
+  baseString += APP_SECRET;
 
   return crypto
     .createHash("md5")
-    .update(stringToSign)
+    .update(baseString)
     .digest("hex")
     .toUpperCase();
 }
 
-async function searchProducts() {
+// ====== חיפוש מוצרים ======
+async function fetchProducts() {
   console.log("==== התחלת חיפוש מוצרים ====");
 
   const params = {
     method: "aliexpress.affiliate.product.query",
-    app_key: ALI_APP_KEY,
-    timestamp: getTimestamp(),
+    app_key: APP_KEY,
+    timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
     format: "json",
     v: "2.0",
     sign_method: "md5",
-    keywords: KEYWORDS,
-    tracking_id: ALI_TRACKING_ID
+
+    // ===== שדות חובה =====
+    tracking_id: TRACKING_ID,
+    keywords: "smart watch",   // ← אתה יכול לשנות פה מילת מפתח
+    page_no: 1,
+    page_size: 10,
+    ship_to_country: "IL",
+    target_currency: "ILS",
+    target_language: "EN",
+    fields: "product_id,product_title,sale_price,product_detail_url"
   };
 
   params.sign = sign(params);
@@ -68,37 +59,21 @@ async function searchProducts() {
       { params }
     );
 
-    console.log("תגובה מלאה מהAPI:");
+    console.log("תגובה מלאה מה-API:");
     console.log(JSON.stringify(response.data, null, 2));
 
-    const products =
-      response.data?.aliexpress_affiliate_product_query_response
-        ?.resp_result?.result?.products;
-
-    if (!products || products.length === 0) {
-      console.log("❌ לא נמצאו מוצרים");
-      return;
-    }
-
-    console.log("נמצא מוצר:");
-    console.log(products[0].product_title);
-
   } catch (err) {
-    console.log("❌ שגיאת API:");
-    console.log(err.response?.data || err.message);
+    console.error("שגיאה בקריאה ל-API:");
+    console.error(err.response?.data || err.message);
   }
 }
 
-app.get("/", (req, res) => {
-  res.send("🚀 הבוט מחובר ועובד");
+// ====== ראוט בדיקה ======
+app.get("/", async (req, res) => {
+  await fetchProducts();
+  res.send("בדיקה נשלחה – תבדוק לוגים");
 });
 
-app.get("/test", async (req, res) => {
-  await searchProducts();
-  res.send("בוצעה בדיקה – תראה לוגים");
-});
-
-app.listen(PORT, async () => {
-  console.log("שרת פועל על פורט", PORT);
-  await searchProducts();
-});
+app.listen(PORT, () => {
+  console.log("שרת פעיל על פורט", PORT);
+});0
