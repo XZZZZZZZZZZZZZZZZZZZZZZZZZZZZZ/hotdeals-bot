@@ -1,24 +1,10 @@
 const axios = require("axios");
 const crypto = require("crypto");
 
-// =========================
-// הגדרות
-// =========================
 const APP_KEY = process.env.APP_KEY;
 const APP_SECRET = process.env.APP_SECRET;
 const TRACKING_ID = process.env.TRACKING_ID;
 
-const KEYWORDS = [
-  "wireless earbuds",
-  "gaming keyboard",
-  "smart watch",
-  "led strip lights",
-  "car accessories"
-];
-
-// =========================
-// יצירת חתימה נכונה
-// =========================
 function generateSign(params) {
   const sortedKeys = Object.keys(params).sort();
   let baseString = APP_SECRET;
@@ -36,21 +22,15 @@ function generateSign(params) {
     .toUpperCase();
 }
 
-// =========================
-// שליפת מוצרים
-// =========================
-async function fetchProducts() {
+async function fetchHotProducts() {
   try {
-    const keyword = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
-
     const params = {
       app_key: APP_KEY,
-      method: "aliexpress.affiliate.product.query",
+      method: "aliexpress.affiliate.hotproduct.query",
       sign_method: "md5",
       timestamp: Date.now(),
       format: "json",
       v: "2.0",
-      keywords: keyword,
       tracking_id: TRACKING_ID,
       page_no: 1,
       page_size: 5
@@ -64,18 +44,18 @@ async function fetchProducts() {
       { params }
     );
 
-    const data =
-      response.data?.aliexpress_affiliate_product_query_response
+    const products =
+      response.data?.aliexpress_affiliate_hotproduct_query_response
         ?.resp_result?.result?.products;
 
-    if (!data || data.length === 0) {
-      console.log("❌ לא נמצאו מוצרים");
+    if (!products || products.length === 0) {
+      console.log("❌ עדיין אין מוצרים");
       return;
     }
 
-    const product = data[0];
+    const product = products[0];
 
-    console.log("🔥 מוצר חדש:");
+    console.log("🔥 מוצר חם:");
     console.log(product.product_title);
     console.log(product.promotion_link);
 
@@ -84,16 +64,13 @@ async function fetchProducts() {
   }
 }
 
-// =========================
-// ריצה כל 20 דקות
-// =========================
 async function startBot() {
   console.log("🚀 הבוט האוטומטי התחיל");
 
-  await fetchProducts();
+  await fetchHotProducts();
 
   setInterval(async () => {
-    await fetchProducts();
+    await fetchHotProducts();
   }, 20 * 60 * 1000);
 }
 
