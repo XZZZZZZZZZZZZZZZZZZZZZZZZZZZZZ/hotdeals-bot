@@ -1,77 +1,76 @@
-const axios = require("axios");
-const crypto = require("crypto");
+const axios = require('axios');
+require('dotenv').config();
 
-const APP_KEY = process.env.APP_KEY;
-const APP_SECRET = process.env.APP_SECRET;
-const TRACKING_ID = process.env.TRACKING_ID;
+// רשימת מילות מפתח לחסימה - ליתר ביטחון
+const FORBIDDEN_KEYWORDS = ['woman', 'women', 'lady', 'girl', 'female', 'fashion', 'jewelry'];
 
-function generateSign(params) {
-  const sortedKeys = Object.keys(params).sort();
-  let baseString = APP_SECRET;
+async function fetchAndPostProduct() {
+    try {
+        console.log("מתחיל חיפוש מוצרים מותאם...");
 
-  sortedKeys.forEach(key => {
-    baseString += key + params[key];
-  });
+        // 1. הגדרת מילת חיפוש בטוחה (למשל: כלי עבודה, גאדג'טים לבית, אביזרי רכב)
+        const searchKeyword = "home tools gadgets"; 
 
-  baseString += APP_SECRET;
+        const response = await axios.get('https://gw.api.alibaba.com/openapi/param2/2/portals.open/api.listPromotionProduct', {
+            params: {
+                appKey: process.env.ALI_APP_KEY,
+                fields: "productTitle,productUrl,salePrice,productMainImageUrl",
+                keywords: searchKeyword,
+                pageSize: 20 // מושכים יותר כדי שנוכל לסנן ידנית בקוד
+            }
+        });
 
-  return crypto
-    .createHash("md5")
-    .update(baseString)
-    .digest("hex")
-    .toUpperCase();
-}
+        const allProducts = response.data?.result?.products || [];
+        
+        // 2. סינון מוצרים - מוודאים שהכותרת לא מכילה מילים לא מתאימות
+        const safeProducts = allProducts.filter(product => {
+            const title = product.productTitle.toLowerCase();
+            return !FORBIDDEN_KEYWORDS.some(word => title.includes(word));
+        });
 
-async function fetchHotProducts() {
-  try {
-    const params = {
-      app_key: APP_KEY,
-      method: "aliexpress.affiliate.hotproduct.query",
-      sign_method: "md5",
-      timestamp: Date.now(),
-      format: "json",
-      v: "2.0",
-      tracking_id: TRACKING_ID,
-      page_no: 1,
-      page_size: 5
-    };
+        if (safeProducts.length === 0) {
+            console.log("לא נמצאו מוצרים העונים לדרישות הסינון.");
+            return;
+        }
 
-    params.sign = generateSign(params);
+        // בוחרים את המוצר הראשון שעבר את הסינון
+        const product = safeProducts[0];
 
-    const response = await axios.post(
-      "https://api-sg.aliexpress.com/sync",
-      null,
-      { params }
-    );
+        // 3. יצירת תיאור יפה והודעה
+        const message = `
+🌟 **מוצר חדש ומעניין שמצאתי עבורכם!** 🌟
 
-    const products =
-      response.data?.aliexpress_affiliate_hotproduct_query_response
-        ?.resp_result?.result?.products;
+📝 **תיאור:** ${product.productTitle}
+💰 **מחיר:** ${product.salePrice}
+🖼️ **תמונה:** ${product.productMainImageUrl}
 
-    if (!products || products.length === 0) {
-      console.log("❌ עדיין אין מוצרים");
-      return;
+🔗 **לרכישה דרך קישור השותפים שלי:**
+${product.productUrl}&aff_id=${process.env.MY_AFFILIATE_ID}
+
+---
+*המבצע לזמן מוגבל!*
+        `;
+
+        // 4. שליחה לצ'אט (כאן אתה מחבר את ה-Bot API של הטלגרם או המערכת שלך)
+        await sendToChat(message);
+        
+        console.log("המוצר הועלה בהצלחה לצ'אט!");
+
+    } catch (error) {
+        console.error("שגיאה בתהליך:", error.message);
     }
-
-    const product = products[0];
-
-    console.log("🔥 מוצר חם:");
-    console.log(product.product_title);
-    console.log(product.promotion_link);
-
-  } catch (err) {
-    console.log("❌ שגיאה:", err.response?.data || err.message);
-  }
 }
 
-async function startBot() {
-  console.log("🚀 הבוט האוטומטי התחיל");
-
-  await fetchHotProducts();
-
-  setInterval(async () => {
-    await fetchHotProducts();
-  }, 20 * 60 * 1000);
+// פונקציה דמיונית לשליחה - תחליף אותה ב-API של הצ'אט שלך
+async function sendToChat(text) {
+    // דוגמה לשליחה לטלגרם:
+    // await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`, {
+    //     chat_id: process.env.CHAT_ID,
+    //     text: text,
+    //     parse_mode: 'Markdown'
+    // });
+    console.log("הודעה נשלחה:\n", text);
 }
 
-startBot();
+// הפעלה
+fetchAndPostProduct();
