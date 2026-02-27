@@ -1,76 +1,81 @@
 const axios = require('axios');
+const express = require('express');
 require('dotenv').config();
 
-// רשימת מילות מפתח לחסימה - ליתר ביטחון
-const FORBIDDEN_KEYWORDS = ['woman', 'women', 'lady', 'girl', 'female', 'fashion', 'jewelry'];
+const app = express();
+const PORT = process.env.PORT || 8080;
 
-async function fetchAndPostProduct() {
+// רשימת מילים אסורות לסינון מחמיר
+const FORBIDDEN_KEYWORDS = [
+    'woman', 'women', 'lady', 'girl', 'female', 'bride', 'bikini', 'dress', 'skirt',
+    'נשים', 'אישה', 'בחורה', 'שמלה', 'חצאית', 'אופנה', 'טיפוח'
+];
+
+async function fetchSafeProduct() {
     try {
-        console.log("מתחיל חיפוש מוצרים מותאם...");
+        console.log("מנסה למשוך מוצר מאלי אקספרס...");
 
-        // 1. הגדרת מילת חיפוש בטוחה (למשל: כלי עבודה, גאדג'טים לבית, אביזרי רכב)
-        const searchKeyword = "home tools gadgets"; 
+        // בדיקה אם המפתח קיים בכלל
+        if (!process.env.ALI_APP_KEY) {
+            console.error("שגיאה: חסר משתנה ALI_APP_KEY ב-Railway Variables");
+            return null;
+        }
 
         const response = await axios.get('https://gw.api.alibaba.com/openapi/param2/2/portals.open/api.listPromotionProduct', {
             params: {
                 appKey: process.env.ALI_APP_KEY,
-                fields: "productTitle,productUrl,salePrice,productMainImageUrl",
-                keywords: searchKeyword,
-                pageSize: 20 // מושכים יותר כדי שנוכל לסנן ידנית בקוד
+                keywords: 'mechanical tools home improvement car accessories', 
+                pageSize: 20
             }
         });
 
-        const allProducts = response.data?.result?.products || [];
-        
-        // 2. סינון מוצרים - מוודאים שהכותרת לא מכילה מילים לא מתאימות
-        const safeProducts = allProducts.filter(product => {
+        const products = response.data?.result?.products || [];
+
+        // סינון מוצרים לפי גדרי הצניעות
+        const safeProducts = products.filter(product => {
             const title = product.productTitle.toLowerCase();
             return !FORBIDDEN_KEYWORDS.some(word => title.includes(word));
         });
 
         if (safeProducts.length === 0) {
-            console.log("לא נמצאו מוצרים העונים לדרישות הסינון.");
-            return;
+            console.log("לא נמצאו מוצרים שתואמים את הסינון.");
+            return null;
         }
 
-        // בוחרים את המוצר הראשון שעבר את הסינון
-        const product = safeProducts[0];
-
-        // 3. יצירת תיאור יפה והודעה
-        const message = `
-🌟 **מוצר חדש ומעניין שמצאתי עבורכם!** 🌟
-
-📝 **תיאור:** ${product.productTitle}
-💰 **מחיר:** ${product.salePrice}
-🖼️ **תמונה:** ${product.productMainImageUrl}
-
-🔗 **לרכישה דרך קישור השותפים שלי:**
-${product.productUrl}&aff_id=${process.env.MY_AFFILIATE_ID}
-
----
-*המבצע לזמן מוגבל!*
-        `;
-
-        // 4. שליחה לצ'אט (כאן אתה מחבר את ה-Bot API של הטלגרם או המערכת שלך)
-        await sendToChat(message);
-        
-        console.log("המוצר הועלה בהצלחה לצ'אט!");
+        return safeProducts[0];
 
     } catch (error) {
-        console.error("שגיאה בתהליך:", error.message);
+        // התיקון החשוב: הדפסת השגיאה המפורטת מהשרת
+        console.error("--- שגיאה מפורטת מהשרת ---");
+        if (error.response) {
+            console.error("סטטוס:", error.response.status);
+            console.error("נתונים:", JSON.stringify(error.response.data));
+        } else {
+            console.error("הודעת שגיאה:", error.message);
+        }
+        console.error("--------------------------");
+        return null;
     }
 }
 
-// פונקציה דמיונית לשליחה - תחליף אותה ב-API של הצ'אט שלך
-async function sendToChat(text) {
-    // דוגמה לשליחה לטלגרם:
-    // await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`, {
-    //     chat_id: process.env.CHAT_ID,
-    //     text: text,
-    //     parse_mode: 'Markdown'
-    // });
-    console.log("הודעה נשלחה:\n", text);
-}
+app.get('/', async (req, res) => {
+    const product = await fetchSafeProduct();
 
-// הפעלה
-fetchAndPostProduct();
+    if (!product) {
+        return res.status(500).send("שגיאה במשיכת המוצר. בדוק את ה-Logs ב-Railway לפרטים נוספים.");
+    }
+
+    const message = `
+📦 **המלצה על מוצר טכני**
+━━━━━━━━━━━━━━━━
+📝 ${product.productTitle}
+💰 מחיר: ${product.salePrice}
+🔗 קישור: ${product.productUrl}&aff_id=${process.env.MY_AFFILIATE_ID || ''}
+    `;
+
+    res.send(`<pre>${message}</pre>`);
+});
+
+app.listen(PORT, () => {
+    console.log(`השרת פעיל על פורט ${PORT}`);
+});
