@@ -5,66 +5,107 @@ const crypto = require("crypto");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-const APP_KEY = process.env.ALI_APP_KEY;
-const APP_SECRET = process.env.ALI_APP_SECRET;
-const TRACKING_ID = process.env.ALI_TRACKING_ID;
+/* =============================
+   משתני סביבה
+============================= */
 
-// דף בית
-app.get("/", (req, res) => {
-  res.send("🚀 הבוט עובד ומחובר");
-});
+const ALI_APP_KEY = process.env.ALI_APP_KEY;
+const ALI_APP_SECRET = process.env.ALI_APP_SECRET;
+const ALI_TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-// חיפוש מוצרים
-app.get("/search", async (req, res) => {
-  console.log("=== התחלת חיפוש מוצרים ===");
+/* =============================
+   פונקציית חתימה תקינה ל-AliExpress
+============================= */
 
+function generateSign(params) {
+  const sortedKeys = Object.keys(params).sort();
+
+  let baseString = ALI_APP_SECRET;
+
+  sortedKeys.forEach(key => {
+    if (params[key] !== undefined && params[key] !== null) {
+      baseString += key + params[key];
+    }
+  });
+
+  baseString += ALI_APP_SECRET;
+
+  return crypto
+    .createHash("md5")
+    .update(baseString)
+    .digest("hex")
+    .toUpperCase();
+}
+
+/* =============================
+   חיפוש מוצרים
+============================= */
+
+async function searchProducts() {
   try {
-    const keywords = req.query.search || "smart watch";
+    console.log("=== התחלת חיפוש מוצרים ===");
+
+    const timestamp = new Date().toISOString();
 
     const params = {
-      app_key: APP_KEY,
+      app_key: ALI_APP_KEY,
       method: "aliexpress.affiliate.product.query",
-      sign_method: "sha256",
-      timestamp: new Date().toISOString(),
+      sign_method: "md5",
+      timestamp: timestamp,
       format: "json",
       v: "2.0",
-      keywords: keywords,
-      tracking_id: TRACKING_ID,
-      page_size: 5
+      keywords: "smart watch",   // ← מילות מפתח כאן
+      page_no: 1,
+      page_size: 5,
+      tracking_id: ALI_TRACKING_ID
     };
 
-    const sortedKeys = Object.keys(params).sort();
-    let signString = APP_SECRET;
-    sortedKeys.forEach(key => {
-      signString += key + params[key];
-    });
-    signString += APP_SECRET;
-
-    const sign = crypto
-      .createHash("sha256")
-      .update(signString)
-      .digest("hex")
-      .toUpperCase();
-
-    params.sign = sign;
+    params.sign = generateSign(params);
 
     const response = await axios.get(
       "https://api-sg.aliexpress.com/sync",
       { params }
     );
 
-    console.log("תשובת API מלאה:");
+    console.log("תגובה מלאה מה-API:");
     console.log(JSON.stringify(response.data, null, 2));
 
-    res.json(response.data);
+    const products =
+      response.data?.aliexpress_affiliate_product_query_response
+        ?.resp_result?.result?.products;
+
+    if (!products || products.length === 0) {
+      console.log("❌ לא נמצאו מוצרים");
+      return [];
+    }
+
+    console.log("✅ נמצאו מוצרים:", products.length);
+    return products;
 
   } catch (error) {
-    console.log("שגיאה:");
+    console.log("❌ שגיאה מה-API:");
     console.log(error.response?.data || error.message);
-    res.status(500).send("שגיאה בקריאה ל-API");
+    return [];
   }
+}
+
+/* =============================
+   ראוטים
+============================= */
+
+app.get("/", (req, res) => {
+  res.send("🚀 הבוט מחובר ועובד");
 });
 
+app.get("/test", async (req, res) => {
+  const products = await searchProducts();
+  res.json(products);
+});
+
+/* =============================
+   הפעלה
+============================= */
+
 app.listen(PORT, () => {
-  console.log("שרת פועל על פורט " + PORT);
+  console.log("שרת פעיל על פורט " + PORT);
 });
