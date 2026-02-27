@@ -5,7 +5,7 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// סינון הרמטי - מילים שאסור שיופיעו בכותרת
+// רשימת מילים אסורות לסינון מחמיר (אנגלית ועברית)
 const FORBIDDEN = [
     'woman', 'women', 'lady', 'girl', 'female', 'dress', 'skirt', 'bikini',
     'makeup', 'jewelry', 'fashion', 'נשים', 'אישה', 'בחורה', 'שמלה', 'חצאית'
@@ -13,21 +13,26 @@ const FORBIDDEN = [
 
 async function fetchSafeProduct() {
     try {
-        console.log("סורק מוצרים בקטגוריות טכניות נקיות...");
+        console.log("מבצע קריאת API מותאמת...");
 
-        // שימוש בפרמטרים המדויקים למניעת שגיאת NullPointer
+        // שימוש ב-URL הישיר של ה-Portals API למניעת שגיאות שרת
         const response = await axios.get('https://gw.api.alibaba.com/openapi/param2/2/portals.open/api.listPromotionProduct', {
             params: {
                 appKey: process.env.ALI_APP_KEY,
-                admitad_ad_id: process.env.MY_AFFILIATE_ID, // לפעמים נדרש בשם הזה
-                trackingId: process.env.MY_AFFILIATE_ID,   // ולפעמים בשם הזה
-                keywords: 'computer hardware components, professional hand tools', 
+                keywords: 'SSD internal, mechanical tools, car diagnostic, computer parts', 
+                targetCurrency: 'USD',
                 pageSize: 40,
-                sort: 'lastVolumeAmount10Days'
+                local: 'en_US'
             }
         });
 
-        const products = response.data?.result?.products || [];
+        // בדיקה אם המבנה תקין
+        if (!response.data || !response.data.result) {
+            console.error("תשובת API ריקה - בדוק את ה-App Key ב-Railway");
+            return null;
+        }
+
+        const products = response.data.result.products || [];
         
         // סינון קפדני לפי גדרי הצניעות
         const safeProducts = products.filter(product => {
@@ -35,10 +40,16 @@ async function fetchSafeProduct() {
             return !FORBIDDEN.some(word => title.includes(word));
         });
 
-        return safeProducts.length > 0 ? safeProducts[0] : null;
+        if (safeProducts.length > 0) {
+            console.log("✅ נמצא מוצר תקין שעבר סינון.");
+            return safeProducts[0];
+        }
+
+        console.log("⚠️ לא נמצאו מוצרים מתאימים בסינון הנוכחי.");
+        return null;
 
     } catch (error) {
-        console.error("שגיאה בקריאת ה-API:", error.message);
+        console.error("שגיאה סופית בחיבור:", error.message);
         return null;
     }
 }
@@ -47,11 +58,11 @@ app.get('/', async (req, res) => {
     const product = await fetchSafeProduct();
     
     if (!product) {
-        return res.send("הבוט סורק מוצרים כשרים... בבקשה רענן בעוד רגע.");
+        return res.send("הבוט מחפש מוצרים כשרים... בבקשה רענן בעוד דקה.");
     }
 
     const message = `
-⚙️ **מוצר טכני שנמצא בסינון**
+📦 **המלצה למוצר טכני**
 ━━━━━━━━━━━━━━━━
 📝 ${product.productTitle}
 💰 מחיר: ${product.salePrice}
@@ -61,4 +72,4 @@ app.get('/', async (req, res) => {
     res.send(`<pre>${message}</pre>`);
 });
 
-app.listen(PORT, () => console.log(`שרת פעיל על פורט ${PORT}`));
+app.listen(PORT, () => console.log(`שרת רץ על פורט ${PORT}`));
