@@ -21,7 +21,7 @@ function generateSign(params, secret) {
 }
 
 async function fetchSafeProduct() {
-    console.log(`[${new Date().toLocaleTimeString()}] מבצע סריקה תקופתית...`);
+    console.log("--- מבצע ניסיון משיכה חדש: מוצרי טכנולוגיה בסיסיים ---");
     try {
         const secret = process.env.ALI_APP_SECRET;
         const appKey = process.env.ALI_APP_KEY;
@@ -35,16 +35,18 @@ async function fetchSafeProduct() {
             v: '2.0',
             sign_method: 'md5',
             ad_id: adId,
-            // שימוש במילות מפתח פשוטות יותר להבטחת תוצאות
-            keywords: 'ssd drive, screwdriver set, usb cable',
+            // מילות מפתח שחייבות להחזיר תוצאות
+            keywords: 'cable, adapter, screwdriver, storage',
             page_size: '20'
         };
 
         params.sign = generateSign(params, secret);
-        const response = await axios.get('https://api-sg.aliexpress.com/sync', { params });
-        const products = response.data?.ae_open_api_product_query_response?.result?.products || [];
 
-        console.log(`התקבלו ${products.length} מוצרים גולמיים.`);
+        const response = await axios.get('https://api-sg.aliexpress.com/sync', { params });
+        const result = response.data?.ae_open_api_product_query_response?.result;
+        const products = result?.products || [];
+
+        console.log(`אלי אקספרס החזירה ${products.length} מוצרים.`);
 
         const safeProducts = products.filter(p => {
             const title = (p.product_title || "").toLowerCase();
@@ -52,25 +54,27 @@ async function fetchSafeProduct() {
         });
 
         if (safeProducts.length > 0) {
-            console.log("✅ נמצא מוצר כשר ומתאים: " + safeProducts[0].product_title);
+            console.log("✅ נמצא מוצר כשר: " + safeProducts[0].product_title);
             return safeProducts[0];
         }
         return null;
-    } catch (e) {
-        console.error("❌ שגיאה בקריאה:", e.message);
+
+    } catch (error) {
+        console.error("❌ שגיאה בחיבור:", error.message);
         return null;
     }
 }
 
-// --- הגדרת לוח זמנים ---
-// ימים א-ה: 10:00 עד 23:00 כל 20 דקות
-cron.schedule('*/20 10-23 * * 0-4', fetchSafeProduct);
+// הפעלה לבדיקה מיידית
+fetchSafeProduct();
 
-// יום שישי: 10:00 עד 14:00
-cron.schedule('*/20 10-13 * * 5', fetchSafeProduct);
+// --- ניהול זמנים (Cron) ---
+cron.schedule('*/20 10-23 * * 0-4', fetchSafeProduct); // א-ה
+cron.schedule('*/20 10-13 * * 5', fetchSafeProduct);    // שישי
+cron.schedule('*/20 22-23 * * 6', fetchSafeProduct);    // מוצ"ש
 
-// מוצאי שבת: 22:00 עד 23:00
-cron.schedule('*/20 22-23 * * 6', fetchSafeProduct);
+app.get('/', (req, res) => {
+    res.send("הבוט סורק מוצרים כשרים ברקע. בדוק את ה-Logs ב-Railway.");
+});
 
-app.get('/', (req, res) => res.send("הבוט פעיל ומסנן. בדוק את ה-Logs לראות תוצאות."));
-app.listen(PORT, () => console.log(`שרת רץ על פורט ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 השרת פעיל בפורט ${PORT}`));
