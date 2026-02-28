@@ -21,7 +21,7 @@ function generateSign(params, secret) {
 }
 
 async function fetchSafeProduct() {
-    console.log("--- מבצע ניסיון משיכה חדש: מוצרי טכנולוגיה בסיסיים ---");
+    console.log(`[${new Date().toLocaleTimeString()}] מנסה למשוך מוצרים...`);
     try {
         const secret = process.env.ALI_APP_SECRET;
         const appKey = process.env.ALI_APP_KEY;
@@ -35,18 +35,17 @@ async function fetchSafeProduct() {
             v: '2.0',
             sign_method: 'md5',
             ad_id: adId,
-            // מילות מפתח שחייבות להחזיר תוצאות
-            keywords: 'cable, adapter, screwdriver, storage',
+            keywords: 'tech gadgets, computer tools, electronic components',
             page_size: '20'
         };
 
         params.sign = generateSign(params, secret);
 
-        const response = await axios.get('https://api-sg.aliexpress.com/sync', { params });
-        const result = response.data?.ae_open_api_product_query_response?.result;
-        const products = result?.products || [];
+        // שימוש בכתובת ה-API המרכזית (Global)
+        const response = await axios.get('https://eco.taobao.com/router/rest', { params });
+        const products = response.data?.ae_open_api_product_query_response?.result?.products || [];
 
-        console.log(`אלי אקספרס החזירה ${products.length} מוצרים.`);
+        console.log(`התקבלו ${products.length} מוצרים גולמיים.`);
 
         const safeProducts = products.filter(p => {
             const title = (p.product_title || "").toLowerCase();
@@ -58,23 +57,16 @@ async function fetchSafeProduct() {
             return safeProducts[0];
         }
         return null;
-
-    } catch (error) {
-        console.error("❌ שגיאה בחיבור:", error.message);
+    } catch (e) {
+        console.error("❌ שגיאה:", e.message);
         return null;
     }
 }
 
-// הפעלה לבדיקה מיידית
-fetchSafeProduct();
-
-// --- ניהול זמנים (Cron) ---
+// --- לוח זמנים ---
 cron.schedule('*/20 10-23 * * 0-4', fetchSafeProduct); // א-ה
 cron.schedule('*/20 10-13 * * 5', fetchSafeProduct);    // שישי
 cron.schedule('*/20 22-23 * * 6', fetchSafeProduct);    // מוצ"ש
 
-app.get('/', (req, res) => {
-    res.send("הבוט סורק מוצרים כשרים ברקע. בדוק את ה-Logs ב-Railway.");
-});
-
-app.listen(PORT, () => console.log(`🚀 השרת פעיל בפורט ${PORT}`));
+app.get('/', (req, res) => res.send("הבוט פעיל ומסנן מוצרים."));
+app.listen(PORT, () => console.log(`שרת רץ על פורט ${PORT}`));
