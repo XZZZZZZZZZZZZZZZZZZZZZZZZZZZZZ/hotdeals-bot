@@ -6,7 +6,7 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// סינון צניעות הרמטי
+// סינון צניעות הרמטי - מילים שאסור שיופיעו בכותרת
 const FORBIDDEN = [
     'woman', 'women', 'lady', 'girl', 'female', 'dress', 'skirt', 'bikini',
     'makeup', 'jewelry', 'fashion', 'נשים', 'אישה', 'בחורה', 'שמלה', 'חצאית'
@@ -24,7 +24,7 @@ function generateSign(params, secret) {
 
 async function fetchSafeProduct() {
     try {
-        console.log("--- סורק מוצרים בקטגוריות טכנולוגיה ותחזוקה ---");
+        console.log("--- סורק מוצרי חומרה ואלקטרוניקה בחיפוש רחב ---");
         
         const secret = process.env.ALI_APP_SECRET;
         const appKey = process.env.ALI_APP_KEY;
@@ -41,10 +41,10 @@ async function fetchSafeProduct() {
             format: 'json',
             v: '2.0',
             sign_method: 'md5',
-            // חיפוש רחב יותר כדי להבטיח תוצאות
-            keywords: 'tools, hardware, storage, electronics accessories',
+            // שינוי מילת חיפוש למילה שתמיד מחזירה תוצאות באלי אקספרס
+            keywords: 'cable, adapter, computer components, tools', 
             page_size: '50',
-            sort: 'LAST_VOLUME_ASC' 
+            sort: 'LAST_VOLUME_DESC' 
         };
 
         params.sign = generateSign(params, secret);
@@ -57,7 +57,7 @@ async function fetchSafeProduct() {
 
         console.log(`אלי אקספרס החזירה ${products.length} מוצרים למערכת.`);
 
-        // סינון קפדני
+        // סינון קפדני לפי גדרי הצניעות
         const safeProducts = products.filter(product => {
             const title = (product.product_title || "").toLowerCase();
             return !FORBIDDEN.some(word => title.includes(word));
@@ -65,15 +65,15 @@ async function fetchSafeProduct() {
 
         if (safeProducts.length > 0) {
             const selected = safeProducts[0];
-            console.log("✅ מוצר כשר נמצא:", selected.product_title);
+            console.log("✅ מוצר כשר ומתאים נמצא:", selected.product_title);
             return selected;
         }
 
-        console.warn("⚠️ לא נמצאו מוצרים שעברו את הסינון.");
+        console.warn("⚠️ לא נמצאו מוצרים מתאימים לאחר סינון הצניעות.");
         return null;
 
     } catch (error) {
-        console.error("❌ שגיאה:", error.message);
+        console.error("❌ שגיאה סופית בחיבור:", error.message);
         return null;
     }
 }
@@ -83,17 +83,17 @@ fetchSafeProduct();
 
 app.get('/', async (req, res) => {
     const product = await fetchSafeProduct();
-    if (!product) return res.send("הבוט מחפש... אנא רענן בעוד דקה.");
+    if (!product) return res.send("הבוט סורק מוצרים כשרים... בבקשה רענן בעוד דקה.");
 
     res.send(`
-        <div style="direction: rtl; font-family: sans-serif;">
-            <h2>⚙️ מוצר טכני שנמצא</h2>
+        <div style="direction: rtl; font-family: sans-serif; padding: 20px;">
+            <h2>⚙️ מוצר טכני שנמצא בסינון</h2>
             <hr>
-            <p><strong>שם:</strong> ${product.product_title}</p>
+            <p><strong>שם המוצר:</strong> ${product.product_title}</p>
             <p><strong>מחיר:</strong> ${product.sale_price} ${product.sale_price_currency}</p>
-            <a href="${product.product_detail_url}" target="_blank">לצפייה במוצר</a>
+            <a href="${product.product_detail_url}" target="_blank" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">לצפייה במוצר באלי אקספרס</a>
         </div>
     `);
 });
 
-app.listen(PORT, () => console.log(`🚀 המערכת רצה בפורט ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 השרת פעיל בפורט ${PORT}`));
