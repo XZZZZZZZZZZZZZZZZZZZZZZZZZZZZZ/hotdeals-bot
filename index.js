@@ -6,7 +6,6 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// סינון צניעות הרמטי
 const FORBIDDEN = ['woman', 'women', 'lady', 'girl', 'female', 'dress', 'skirt', 'fashion', 'נשים', 'אישה', 'שמלה'];
 
 function generateSign(params, secret) {
@@ -19,10 +18,9 @@ function generateSign(params, secret) {
     return crypto.createHash('md5').update(str, 'utf8').digest('hex').toUpperCase();
 }
 
-async function fetchSafeProduct() {
+async function runAutoSearch() {
+    console.log("--- מתחיל קריאה אוטומטית למוצרים (קטגוריה: טכנולוגיה) ---");
     try {
-        console.log("--- מנסה למשוך מוצרים מקטגוריית מחשבים (ID: 7) ---");
-        
         const secret = process.env.ALI_APP_SECRET;
         const appKey = process.env.ALI_APP_KEY;
 
@@ -33,7 +31,7 @@ async function fetchSafeProduct() {
             format: 'json',
             v: '2.0',
             sign_method: 'md5',
-            category_ids: '7', // קטגוריית Computer & Office
+            category_ids: '7,44,509', // קטגוריות: מחשבים, אלקטרוניקה, כלי עבודה
             page_size: '50'
         };
 
@@ -42,25 +40,32 @@ async function fetchSafeProduct() {
         const response = await axios.get('https://eco.taobao.com/router/rest', { params });
         const products = response.data?.ae_open_api_product_query_response?.result?.products || [];
 
-        console.log(`התקבלו ${products.length} מוצרים מה-API.`);
+        console.log(`התקבלו ${products.length} מוצרים גולמיים.`);
 
         const safeProducts = products.filter(p => {
             const title = (p.product_title || "").toLowerCase();
             return !FORBIDDEN.some(word => title.includes(word));
         });
 
-        return safeProducts.length > 0 ? safeProducts[0] : null;
-
+        if (safeProducts.length > 0) {
+            console.log("✅ מוצר כשר נמצא והוכן להצגה: " + safeProducts[0].product_title);
+            return safeProducts[0];
+        } else {
+            console.log("⚠️ לא נמצאו מוצרים מתאימים בסינון הנוכחי.");
+            return null;
+        }
     } catch (error) {
-        console.error("שגיאה:", error.message);
+        console.error("❌ שגיאה בקריאה:", error.message);
         return null;
     }
 }
 
+// הפעלה אוטומטית מיד עם עליית השרת
+runAutoSearch();
+
 app.get('/', async (req, res) => {
-    const product = await fetchSafeProduct();
-    if (!product) return res.send("עדיין מתקבלות 0 תוצאות מאלי אקספרס. בודק הגדרות חשבון...");
-    res.send(`נמצא מוצר כשר: ${product.product_title}`);
+    const product = await runAutoSearch();
+    res.send(product ? `נמצא מוצר: ${product.product_title}` : "מחפש מוצרים... רענן בעוד רגע.");
 });
 
-app.listen(PORT, () => console.log(`שרת רץ על פורט ${PORT}`));
+app.listen(PORT, () => console.log(`שרת פעיל על פורט ${PORT} ומבצע סריקות.`));
