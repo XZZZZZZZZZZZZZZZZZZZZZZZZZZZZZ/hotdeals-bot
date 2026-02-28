@@ -6,13 +6,11 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// רשימת מילים אסורות לשמירה על סביבה נקייה
 const FORBIDDEN = [
     'woman', 'women', 'lady', 'girl', 'female', 'dress', 'skirt', 'bikini',
     'makeup', 'jewelry', 'fashion', 'נשים', 'אישה', 'בחורה', 'שמלה', 'חצאית'
 ];
 
-// פונקציה לחישוב החתימה (Sign) שאלי אקספרס דורשים
 function generateSign(params, secret) {
     const sortedKeys = Object.keys(params).sort();
     let str = secret;
@@ -25,11 +23,13 @@ function generateSign(params, secret) {
 
 async function fetchSafeProduct() {
     try {
+        console.log("--- מתחיל סריקה אוטומטית של מוצרים טכניים ---");
+        
         const secret = process.env.ALI_APP_SECRET;
         const appKey = process.env.ALI_APP_KEY;
         
         if (!secret || !appKey) {
-            console.error("חסרים מפתחות ALI_APP_KEY או ALI_APP_SECRET ב-Railway");
+            console.error("❌ שגיאה: חסרים מפתחות ALI_APP_KEY או ALI_APP_SECRET");
             return null;
         }
 
@@ -40,44 +40,42 @@ async function fetchSafeProduct() {
             format: 'json',
             v: '2.0',
             sign_method: 'md5',
-            // מיקוד במוצרי חומרה וכלי עבודה נקיים
-            keywords: 'computer components, mechanical hand tools, soldering iron station',
+            keywords: 'SSD drive, mechanical tools, multimeter, networking switch',
             page_size: '40'
         };
 
         params.sign = generateSign(params, secret);
 
         const response = await axios.get('https://eco.taobao.com/router/rest', { params });
-        
-        const result = response.data?.ae_open_api_product_query_response?.result;
-        const products = result?.products || [];
+        const products = response.data?.ae_open_api_product_query_response?.result?.products || [];
 
-        // סינון קפדני לפי גדרי הצניעות
+        console.log(`נמצאו ${products.length} מוצרים גולמיים. מתחיל סינון...`);
+
         const safeProducts = products.filter(product => {
             const title = (product.product_title || "").toLowerCase();
             return !FORBIDDEN.some(word => title.includes(word));
         });
 
-        return safeProducts.length > 0 ? safeProducts[0] : null;
+        if (safeProducts.length > 0) {
+            console.log("✅ נמצא מוצר כשר ומתאים:", safeProducts[0].product_title);
+            return safeProducts[0];
+        }
+
+        console.warn("⚠️ לא נמצאו מוצרים שעברו את סינון הצניעות.");
+        return null;
 
     } catch (error) {
-        console.error("שגיאה בקריאת ה-API:", error.message);
+        console.error("❌ שגיאה בחיבור ל-API:", error.message);
         return null;
     }
 }
 
+// הפעלה אוטומטית ברגע שהשרת עולה
+fetchSafeProduct();
+
 app.get('/', async (req, res) => {
     const product = await fetchSafeProduct();
-    if (!product) return res.send("הבוט סורק מוצרים... רענן בעוד דקה.");
-
-    const message = `
-⚙️ **מוצר טכני שנמצא בסינון**
-━━━━━━━━━━━━━━━━
-📝 ${product.product_title}
-💰 מחיר: ${product.sale_price}
-🔗 קישור: ${product.product_detail_url}
-    `;
-    res.send(`<pre>${message}</pre>`);
+    res.send(product ? `נמצא מוצר: ${product.product_title}` : "סורק כרגע...");
 });
 
-app.listen(PORT, () => console.log(`שרת אלי אקספרס פעיל על פורט ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 השרת פעיל ומבצע סריקה בפורט ${PORT}`));
