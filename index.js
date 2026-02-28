@@ -6,11 +6,8 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// סינון צניעות הרמטי - מילים שאסור שיופיעו בכותרת
-const FORBIDDEN = [
-    'woman', 'women', 'lady', 'girl', 'female', 'dress', 'skirt', 'bikini',
-    'makeup', 'jewelry', 'fashion', 'נשים', 'אישה', 'בחורה', 'שמלה', 'חצאית'
-];
+// סינון צניעות הרמטי
+const FORBIDDEN = ['woman', 'women', 'lady', 'girl', 'female', 'dress', 'skirt', 'fashion', 'נשים', 'אישה', 'שמלה'];
 
 function generateSign(params, secret) {
     const sortedKeys = Object.keys(params).sort();
@@ -24,15 +21,10 @@ function generateSign(params, secret) {
 
 async function fetchSafeProduct() {
     try {
-        console.log("--- סורק מוצרי חומרה ואלקטרוניקה בחיפוש רחב ---");
+        console.log("--- מנסה למשוך מוצרים מקטגוריית מחשבים (ID: 7) ---");
         
         const secret = process.env.ALI_APP_SECRET;
         const appKey = process.env.ALI_APP_KEY;
-        
-        if (!secret || !appKey) {
-            console.error("❌ חסרים מפתחות ב-Railway");
-            return null;
-        }
 
         const params = {
             app_key: appKey,
@@ -41,59 +33,34 @@ async function fetchSafeProduct() {
             format: 'json',
             v: '2.0',
             sign_method: 'md5',
-            // שינוי מילת חיפוש למילה שתמיד מחזירה תוצאות באלי אקספרס
-            keywords: 'cable, adapter, computer components, tools', 
-            page_size: '50',
-            sort: 'LAST_VOLUME_DESC' 
+            category_ids: '7', // קטגוריית Computer & Office
+            page_size: '50'
         };
 
         params.sign = generateSign(params, secret);
 
         const response = await axios.get('https://eco.taobao.com/router/rest', { params });
-        
-        // שליפת רשימת המוצרים
-        const result = response.data?.ae_open_api_product_query_response?.result;
-        const products = result?.products || [];
+        const products = response.data?.ae_open_api_product_query_response?.result?.products || [];
 
-        console.log(`אלי אקספרס החזירה ${products.length} מוצרים למערכת.`);
+        console.log(`התקבלו ${products.length} מוצרים מה-API.`);
 
-        // סינון קפדני לפי גדרי הצניעות
-        const safeProducts = products.filter(product => {
-            const title = (product.product_title || "").toLowerCase();
+        const safeProducts = products.filter(p => {
+            const title = (p.product_title || "").toLowerCase();
             return !FORBIDDEN.some(word => title.includes(word));
         });
 
-        if (safeProducts.length > 0) {
-            const selected = safeProducts[0];
-            console.log("✅ מוצר כשר ומתאים נמצא:", selected.product_title);
-            return selected;
-        }
-
-        console.warn("⚠️ לא נמצאו מוצרים מתאימים לאחר סינון הצניעות.");
-        return null;
+        return safeProducts.length > 0 ? safeProducts[0] : null;
 
     } catch (error) {
-        console.error("❌ שגיאה סופית בחיבור:", error.message);
+        console.error("שגיאה:", error.message);
         return null;
     }
 }
 
-// הפעלה אוטומטית בכל פעם שהשרת עולה
-fetchSafeProduct();
-
 app.get('/', async (req, res) => {
     const product = await fetchSafeProduct();
-    if (!product) return res.send("הבוט סורק מוצרים כשרים... בבקשה רענן בעוד דקה.");
-
-    res.send(`
-        <div style="direction: rtl; font-family: sans-serif; padding: 20px;">
-            <h2>⚙️ מוצר טכני שנמצא בסינון</h2>
-            <hr>
-            <p><strong>שם המוצר:</strong> ${product.product_title}</p>
-            <p><strong>מחיר:</strong> ${product.sale_price} ${product.sale_price_currency}</p>
-            <a href="${product.product_detail_url}" target="_blank" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">לצפייה במוצר באלי אקספרס</a>
-        </div>
-    `);
+    if (!product) return res.send("עדיין מתקבלות 0 תוצאות מאלי אקספרס. בודק הגדרות חשבון...");
+    res.send(`נמצא מוצר כשר: ${product.product_title}`);
 });
 
-app.listen(PORT, () => console.log(`🚀 השרת פעיל בפורט ${PORT}`));
+app.listen(PORT, () => console.log(`שרת רץ על פורט ${PORT}`));
