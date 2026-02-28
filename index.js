@@ -20,57 +20,46 @@ function generateSign(params, secret) {
     return crypto.createHash('md5').update(str, 'utf8').digest('hex').toUpperCase();
 }
 
-async function fetchAndLog() {
-    console.log(`[${new Date().toLocaleTimeString()}] --- מבצע קריאת API עכשיו! ---`);
+async function fetchNow() {
+    console.log("--- בדיקת תקשורת אגרסיבית מול אלי אקספרס ---");
     try {
-        const secret = process.env.ALI_APP_SECRET;
-        const appKey = process.env.ALI_APP_KEY;
-        const adId = process.env.ALI_TRACKING_ID;
-
         const params = {
-            app_key: appKey,
+            app_key: process.env.ALI_APP_KEY,
             method: 'ae.open.api.product.query',
             timestamp: new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14),
             format: 'json',
             v: '2.0',
             sign_method: 'md5',
-            ad_id: adId,
-            keywords: 'tools, computer accessories, electronic components',
-            page_size: '20'
+            ad_id: process.env.ALI_TRACKING_ID,
+            keywords: 'iphone', // מילת חיפוש חזקה לבדיקה
+            page_size: '10'
         };
 
-        params.sign = generateSign(params, secret);
+        params.sign = generateSign(params, process.env.ALI_APP_SECRET);
 
         const response = await axios.get('https://api-sg.aliexpress.com/sync', { params });
         const products = response.data?.ae_open_api_product_query_response?.result?.products || [];
 
-        console.log(`תוצאה מה-API: התקבלו ${products.length} מוצרים.`);
-
-        const safeProducts = products.filter(p => {
-            const title = (p.product_title || "").toLowerCase();
-            return !FORBIDDEN.some(word => title.includes(word));
-        });
-
-        if (safeProducts.length > 0) {
-            console.log("✅ נמצא מוצר כשר: " + safeProducts[0].product_title);
-        } else if (products.length > 0) {
-            console.log("⚠️ מוצרים נמצאו אך כולם נפסלו בסינון הצניעות.");
+        if (products.length > 0) {
+            console.log(`✅ הצלחה! התקבלו ${products.length} מוצרים.`);
+            // סינון צניעות לפני הצגה
+            const safe = products.filter(p => !FORBIDDEN.some(w => (p.product_title || "").toLowerCase().includes(w)));
+            if (safe.length > 0) console.log("מוצר ראשון כשר: " + safe[0].product_title);
+        } else {
+            console.log("❌ עדיין מתקבלים 0 מוצרים. אלי אקספרס חוסמת את הבקשה.");
         }
     } catch (e) {
-        console.error("❌ שגיאת API קריטית:", e.message);
+        console.error("❌ שגיאה טכנית:", e.message);
     }
 }
 
-// --- הפעלה מיידית ברגע שהשרת עולה ---
-fetchAndLog();
+// הפעלה מיידית
+fetchNow();
 
-// --- הגדרת לוח זמנים (כל 20 דקות) ---
-// א-ה: 10:00-23:00
-cron.schedule('*/20 10-23 * * 0-4', fetchAndLog);
-// שישי: 10:00-14:00
-cron.schedule('*/20 10-13 * * 5', fetchAndLog);
-// מוצ"ש: 22:00-23:00
-cron.schedule('*/20 22-23 * * 6', fetchAndLog);
+// תזמון כל 20 דקות (כולל שמירת שבת וחופש בשישי)
+cron.schedule('*/20 10-23 * * 0-4', fetchNow);
+cron.schedule('*/20 10-13 * * 5', fetchNow);
+cron.schedule('*/20 22-23 * * 6', fetchNow);
 
-app.get('/', (req, res) => res.send("הבוט פועל ומבצע קריאות API אוטומטיות."));
-app.listen(PORT, () => console.log(`שרת רץ על פורט ${PORT} ומבצע סריקות.`));
+app.get('/', (req, res) => res.send("הבוט מנסה למשוך נתונים... בדוק Logs."));
+app.listen(PORT, () => console.log(`שרת רץ על פורט ${PORT}`));
