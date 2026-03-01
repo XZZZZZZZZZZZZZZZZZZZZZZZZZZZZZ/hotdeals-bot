@@ -1,76 +1,45 @@
 const axios = require('axios');
-const express = require('express');
-const crypto = require('crypto');
-const cron = require('node-cron');
-require('dotenv').config();
 
-const app = express();
-const PORT = process.env.PORT || 8080;
+// פונקציה ליצירת השהיה אקראית (כדי למנוע זיהוי כבוט)
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// סינון צניעות קפדני
-const FORBIDDEN = ['woman', 'women', 'lady', 'girl', 'female', 'dress', 'skirt', 'fashion', 'נשים', 'אישה', 'שמלה'];
-
-function generateSign(params, secret) {
-    const sortedKeys = Object.keys(params).sort();
-    let str = secret;
-    for (const key of sortedKeys) {
-        str += key + params[key];
-    }
-    str += secret;
-    return crypto.createHash('md5').update(str, 'utf8').digest('hex').toUpperCase();
-}
-
-async function fetchAndLog() {
-    console.log(`[${new Date().toLocaleTimeString()}] --- מבצע קריאת API עכשיו! ---`);
+async function fetchHotDeals() {
     try {
-        const secret = process.env.ALI_APP_SECRET;
-        const appKey = process.env.ALI_APP_KEY;
-        const adId = process.env.ALI_TRACKING_ID;
+        // הוספת השהיה אקראית של 5-15 שניות לפני כל פנייה
+        const delay = Math.floor(Math.random() * 10000) + 5000;
+        console.log(`ממתין ${delay/1000} שניות כדי למנוע חסימה...`);
+        await sleep(delay);
 
-        const params = {
-            app_key: appKey,
-            method: 'ae.open.api.product.query',
-            timestamp: new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14),
-            format: 'json',
-            v: '2.0',
-            sign_method: 'md5',
-            ad_id: adId,
-            keywords: 'tools, computer accessories, electronic components',
-            page_size: '20'
-        };
-
-        params.sign = generateSign(params, secret);
-
-        const response = await axios.get('https://api-sg.aliexpress.com/sync', { params });
-        const products = response.data?.ae_open_api_product_query_response?.result?.products || [];
-
-        console.log(`תוצאה מה-API: התקבלו ${products.length} מוצרים.`);
-
-        const safeProducts = products.filter(p => {
-            const title = (p.product_title || "").toLowerCase();
-            return !FORBIDDEN.some(word => title.includes(word));
+        const url = 'YOUR_API_ENDPOINT_HERE'; // כאן שים את הכתובת של ה-API
+        
+        const response = await axios.get(url, {
+            headers: {
+                // User-Agent שמדמה דפדפן Chrome רגיל על Windows
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'application/json',
+                'Referer': 'https://google.com' // מקור הגעה שנראה טבעי
+            }
         });
 
-        if (safeProducts.length > 0) {
-            console.log("✅ נמצא מוצר כשר: " + safeProducts[0].product_title);
-        } else if (products.length > 0) {
-            console.log("⚠️ מוצרים נמצאו אך כולם נפסלו בסינון הצניעות.");
+        const products = response.data;
+        
+        if (products && products.length > 0) {
+            console.log(`הצלחה! נמצאו ${products.length} מוצרים.`);
+            // כאן תוכל להמשיך את הלוגיקה של הבוט שלך
+        } else {
+            console.log('תוצאה מה-API: התקבלו 0 מוצרים. ייתכן שיש לעדכן את פרמטרי החיפוש.');
         }
-    } catch (e) {
-        console.error("❌ שגיאת API קריטית:", e.message);
+
+    } catch (error) {
+        console.error('שגיאה בקריאת ה-API:', error.message);
+        if (error.response && error.response.status === 403) {
+            console.log('אזהרה: השרת חסם את הבקשה (403 Forbidden). כדאי להגדיל את מרווחי הזמן.');
+        }
     }
 }
 
-// --- הפעלה מיידית ברגע שהשרת עולה ---
-fetchAndLog();
+// הרצה במרווחי זמן של שעה עם "סטייה" אקראית
+setInterval(fetchHotDeals, 3600000 + (Math.random() * 300000));
 
-// --- הגדרת לוח זמנים (כל 20 דקות) ---
-// א-ה: 10:00-23:00
-cron.schedule('*/20 10-23 * * 0-4', fetchAndLog);
-// שישי: 10:00-14:00
-cron.schedule('*/20 10-13 * * 5', fetchAndLog);
-// מוצ"ש: 22:00-23:00
-cron.schedule('*/20 22-23 * * 6', fetchAndLog);
-
-app.get('/', (req, res) => res.send("הבוט פועל ומבצע קריאות API אוטומטיות."));
-app.listen(PORT, () => console.log(`שרת רץ על פורט ${PORT} ומבצע סריקות.`));
+// הרצה ראשונית
+fetchHotDeals();
