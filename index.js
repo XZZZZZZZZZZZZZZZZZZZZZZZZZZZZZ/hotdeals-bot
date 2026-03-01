@@ -1,39 +1,135 @@
-const axios = require('axios');
+const axios = require("axios");
+const crypto = require("crypto");
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// =============================
+// 🔐 פרטי API מה-ENV
+// =============================
+const APP_KEY = process.env.APP_KEY;
+const APP_SECRET = process.env.APP_SECRET;
+const TRACKING_ID = process.env.TRACKING_ID;
 
-async function fetchHotDeals() {
-    try {
-        // מנגנון המתנה למניעת חסימות (עובד לפי הלוג שלך!)
-        const delay = Math.floor(Math.random() * 10000) + 5000;
-        console.log(`ממתין ${(delay/1000).toFixed(3)} שניות כדי למנוע חסימה...`);
-        await sleep(delay);
+// =============================
+// ⚙️ הגדרות בוט
+// =============================
 
-        // --- חשוב: החלף את הכתובת למטה בכתובת ה-API האמיתית שלך ---
-        const url = 'https://api.example.com/deals'; // שים כאן את הלינק המדויק
-        
-        const response = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept': 'application/json'
-            }
-        });
+// מילות מפתח (תוכל לשנות חופשי)
+const KEYWORDS = [
+  "smart watch",
+  "bluetooth speaker",
+  "wireless earbuds",
+  "gaming mouse"
+];
 
-        if (response.data && response.data.length > 0) {
-            console.log(`הצלחה! נמצאו ${response.data.length} מוצרים.`);
-        } else {
-            console.log('תוצאה מה-API: התקבלו 0 מוצרים.');
-        }
+// שעות פעילות (לפי שעון ישראל)
+const START_HOUR = 9;   // מתחיל ב-09:00
+const END_HOUR = 23;    // עד 23:00
 
-    } catch (error) {
-        if (error.code === 'ERR_INVALID_URL') {
-            console.error('שגיאה: שכחת להזין כתובת URL תקינה בקוד!');
-        } else {
-            console.error('שגיאה בקריאת ה-API:', error.message);
-        }
-    }
+// כל כמה זמן לשלוח (בדקות)
+const INTERVAL_MINUTES = 20;
+
+// =============================
+// 🧠 בדיקת טווח שעות
+// =============================
+function isWithinActiveHours() {
+  const now = new Date();
+  const israelHour = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Jerusalem" })
+  ).getHours();
+
+  return israelHour >= START_HOUR && israelHour < END_HOUR;
 }
 
-// הרצה כל שעה
-setInterval(fetchHotDeals, 3600000);
-fetchHotDeals();
+// =============================
+// 🔑 חתימת API
+// =============================
+function generateSign(params) {
+  const sortedKeys = Object.keys(params).sort();
+  let baseString = APP_SECRET;
+
+  sortedKeys.forEach(key => {
+    baseString += key + params[key];
+  });
+
+  baseString += APP_SECRET;
+
+  return crypto
+    .createHash("md5")
+    .update(baseString)
+    .digest("hex")
+    .toUpperCase();
+}
+
+// =============================
+// 📦 קריאת מוצרים לפי מילת מפתח
+// =============================
+async function fetchProductByKeyword(keyword) {
+  const params = {
+    app_key: APP_KEY,
+    method: "aliexpress.affiliate.product.query",
+    sign_method: "md5",
+    timestamp: Date.now(),
+    format: "json",
+    v: "2.0",
+    tracking_id: TRACKING_ID,
+    keywords: keyword,
+    page_no: 1,
+    page_size: 5,
+    fields: "product_title,promotion_link,app_sale_price"
+  };
+
+  params.sign = generateSign(params);
+
+  const response = await axios.post(
+    "https://api-sg.aliexpress.com/sync",
+    null,
+    { params }
+  );
+
+  return response.data?.aliexpress_affiliate_product_query_response
+    ?.resp_result?.result?.products || [];
+}
+
+// =============================
+// 🚀 שליחה אוטומטית
+// =============================
+async function runBot() {
+  if (!isWithinActiveHours()) {
+    console.log("⏰ מחוץ לשעות פעילות");
+    return;
+  }
+
+  const randomKeyword =
+    KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
+
+  console.log("🔎 מחפש לפי:", randomKeyword);
+
+  try {
+    const products = await fetchProductByKeyword(randomKeyword);
+
+    if (!products.length) {
+      console.log("❌ לא נמצאו מוצרים");
+      return;
+    }
+
+    const product =
+      products[Math.floor(Math.random() * products.length)];
+
+    console.log("🔥 מוצר שנבחר:");
+    console.log(product.product_title);
+    console.log(product.promotion_link);
+
+    // כאן תכניס את פונקציית השליחה לצ'אט שלך
+
+  } catch (err) {
+    console.log("❌ שגיאה:");
+    console.log(err.response?.data || err.message);
+  }
+}
+
+// =============================
+// ▶️ הפעלה
+// =============================
+console.log("🚀 הבוט האוטומטי הופעל");
+
+runBot();
+setInterval(runBot, INTERVAL_MINUTES * 60 * 1000);
