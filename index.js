@@ -9,57 +9,93 @@ const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
 const TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-function createSign(params) {
-  const sorted = Object.keys(params).sort();
-  let base = APP_SECRET;
+function sign(params) {
+  const sortedKeys = Object.keys(params).sort();
+  let baseString = APP_SECRET;
 
-  sorted.forEach(key => {
-    base += key + params[key];
+  sortedKeys.forEach(key => {
+    baseString += key + params[key];
   });
 
-  base += APP_SECRET;
+  baseString += APP_SECRET;
 
   return crypto
     .createHash("md5")
-    .update(base)
+    .update(baseString)
     .digest("hex")
     .toUpperCase();
 }
 
-app.get("/", (req, res) => {
-  res.send("Server OK");
-});
+async function fetchProduct() {
+  const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
 
-app.get("/api-test", async (req, res) => {
-  try {
-    const params = {
-      method: "aliexpress.affiliate.product.query",
-      app_key: APP_KEY,
-      sign_method: "md5",
-      timestamp: Date.now(),
-      format: "json",
-      v: "2.0",
-      keywords: "iphone",
-      page_no: 1,
-      page_size: 3,
-      tracking_id: TRACKING_ID
-    };
+  const params = {
+    app_key: APP_KEY,
+    method: "aliexpress.affiliate.product.query",
+    sign_method: "md5",
+    timestamp: timestamp,
+    format: "json",
+    v: "2.0",
+    keywords: "gadget",
+    fields:
+      "product_id,product_title,sale_price,promotion_link,product_main_image_url",
+    tracking_id: TRACKING_ID,
+    page_size: 5
+  };
 
-    params.sign = createSign(params);
+  params.sign = sign(params);
 
-    const response = await axios.post(
-      "https://api-sg.aliexpress.com/sync",
-      null,
-      { params }
-    );
+  const response = await axios.get(
+    "https://gw.api.alibaba.com/openapi/param2/2/portals.open/api",
+    { params }
+  );
 
-    res.json(response.data);
+  const products =
+    response.data?.aliexpress_affiliate_product_query_response?.resp_result
+      ?.result?.products?.product;
 
-  } catch (err) {
-    res.json({ error: err.response?.data || err.message });
+  if (!products || products.length === 0) {
+    console.log("❌ אין מוצרים");
+    return null;
   }
+
+  return products[Math.floor(Math.random() * products.length)];
+}
+
+async function sendToChat(product) {
+  if (!product) return;
+
+  const message = `
+🔥 ${product.product_title}
+💰 מחיר: ${product.sale_price}
+🔗 ${product.promotion_link}
+`;
+
+  await axios.post("https://dilim.clickandgo.cfd/send", {
+    message: message
+  });
+
+  console.log("✅ נשלח לצ'אט");
+}
+
+async function runBot() {
+  console.log("🚀 בוט רץ...");
+
+  try {
+    const product = await fetchProduct();
+    await sendToChat(product);
+  } catch (err) {
+    console.log("❌ שגיאה:", err.response?.data || err.message);
+  }
+}
+
+setInterval(runBot, 20 * 60 * 1000);
+runBot();
+
+app.get("/", (req, res) => {
+  res.send("השרת פעיל");
 });
 
 app.listen(PORT, () => {
-  console.log("Server started on port " + PORT);
+  console.log("שרת פעיל על פורט", PORT);
 });
