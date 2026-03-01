@@ -1,11 +1,36 @@
+const express = require("express");
 const axios = require("axios");
 const crypto = require("crypto");
 
-const APP_KEY = process.env.APP_KEY;
-const APP_SECRET = process.env.APP_SECRET;
-const TRACKING_ID = process.env.TRACKING_ID;
+const app = express();
 
-function generateSign(params) {
+/* ============================= */
+/*   קריאת משתנים מ-Railway     */
+/* ============================= */
+
+const APP_KEY = process.env.ALI_APP_KEY;
+const APP_SECRET = process.env.ALI_APP_SECRET;
+const TRACKING_ID = process.env.ALI_TRACKING_ID;
+
+const PORT = process.env.PORT || 8080;
+
+/* ============================= */
+/*       מילות מפתח             */
+/* ============================= */
+
+const KEYWORDS = [
+  "wireless earbuds",
+  "gaming headset",
+  "smart watch",
+  "bluetooth speaker",
+  "power bank"
+];
+
+/* ============================= */
+/*   יצירת חתימה ל-AliExpress    */
+/* ============================= */
+
+function createSign(params) {
   const sortedKeys = Object.keys(params).sort();
   let baseString = APP_SECRET;
 
@@ -15,46 +40,89 @@ function generateSign(params) {
 
   baseString += APP_SECRET;
 
-  return crypto
-    .createHash("md5")
-    .update(baseString)
-    .digest("hex")
-    .toUpperCase();
+  return crypto.createHash("md5").update(baseString).digest("hex").toUpperCase();
 }
 
-async function testAPI() {
-  console.log("🔎 מתחיל בדיקת API נקייה...");
+/* ============================= */
+/*   שליפת מוצרים מה-API        */
+/* ============================= */
+
+async function fetchProducts(keyword) {
+  const method = "aliexpress.affiliate.product.query";
+  const timestamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
 
   const params = {
+    method,
     app_key: APP_KEY,
-    method: "aliexpress.affiliate.product.query",
-    sign_method: "md5",
-    timestamp: Date.now(),
+    timestamp,
     format: "json",
     v: "2.0",
-    tracking_id: TRACKING_ID,
-    keywords: "iphone",
-    page_no: 1,
-    page_size: 3,
-    fields: "product_title,promotion_link"
+    sign_method: "md5",
+    keywords: keyword,
+    page_size: 5,
+    tracking_id: TRACKING_ID
   };
 
-  params.sign = generateSign(params);
+  const sign = createSign(params);
+  params.sign = sign;
 
+  const url = "https://api-sg.aliexpress.com/sync";
+
+  const response = await axios.get(url, { params });
+
+  return response.data;
+}
+
+/* ============================= */
+/*        בדיקת חיבור           */
+/* ============================= */
+
+app.get("/", (req, res) => {
+  res.send("הבוט מחובר ועובד 🚀");
+});
+
+/* ============================= */
+/*    בדיקה ידנית של מוצר       */
+/* ============================= */
+
+app.get("/test", async (req, res) => {
   try {
-    const response = await axios.post(
-      "https://api-sg.aliexpress.com/sync",
-      null,
-      { params }
-    );
+    if (!APP_KEY || !APP_SECRET || !TRACKING_ID) {
+      return res.json({ error: "חסר משתנה סביבה" });
+    }
 
-    console.log("📦 תגובה מלאה מהשרת:");
-    console.log(JSON.stringify(response.data, null, 2));
+    const keyword = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
+
+    const data = await fetchProducts(keyword);
+
+    res.json(data);
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
+});
+
+/* ============================= */
+/*      שליחה כל 20 דקות        */
+/* ============================= */
+
+async function autoJob() {
+  try {
+    const keyword = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
+    console.log("מחפש לפי:", keyword);
+
+    const data = await fetchProducts(keyword);
+
+    console.log("תוצאה מה-API:");
+    console.log(JSON.stringify(data, null, 2));
 
   } catch (err) {
-    console.log("❌ שגיאה:");
+    console.log("שגיאה:");
     console.log(err.response?.data || err.message);
   }
 }
 
-testAPI();
+setInterval(autoJob, 20 * 60 * 1000);
+
+app.listen(PORT, () => {
+  console.log("שרת פעיל על פורט", PORT);
+});
