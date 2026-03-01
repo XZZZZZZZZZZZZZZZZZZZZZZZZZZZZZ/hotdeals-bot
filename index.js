@@ -1,135 +1,41 @@
-const axios = require("axios");
-const crypto = require("crypto");
+const axios = require('axios');
+const cheerio = require('cheerio');
 
-// =============================
-// 🔐 פרטי API מה-ENV
-// =============================
-const APP_KEY = process.env.APP_KEY;
-const APP_SECRET = process.env.APP_SECRET;
-const TRACKING_ID = process.env.TRACKING_ID;
+async function scrapeDeals() {
+    try {
+        // הכתובת של האתר שבו נמצאים המבצעים
+        const url = 'https://www.example-deals-site.co.il'; 
+        
+        const { data } = await axios.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
 
-// =============================
-// ⚙️ הגדרות בוט
-// =============================
+        // טעינת הקוד של הדף לתוך Cheerio
+        const $ = cheerio.load(data);
+        const deals = [];
 
-// מילות מפתח (תוכל לשנות חופשי)
-const KEYWORDS = [
-  "smart watch",
-  "bluetooth speaker",
-  "wireless earbuds",
-  "gaming mouse"
-];
+        // כאן צריך להגדיר את ה"סלקטור" - מה מחפשים בדף?
+        // למשל: כל אלמנט עם קלאס של מוצר
+        $('.product-card').each((index, element) => {
+            const title = $(element).find('.title').text().trim();
+            const price = $(element).find('.price').text().trim();
+            
+            deals.push({ title, price });
+        });
 
-// שעות פעילות (לפי שעון ישראל)
-const START_HOUR = 9;   // מתחיל ב-09:00
-const END_HOUR = 23;    // עד 23:00
+        if (deals.length > 0) {
+            console.log(`נמצאו ${deals.length} מבצעים חדשים!`);
+            console.log(deals.slice(0, 3)); // מציג את 3 הראשונים לבדיקה
+        } else {
+            console.log('לא נמצאו מבצעים. ייתכן שהסלקטורים השתנו.');
+        }
 
-// כל כמה זמן לשלוח (בדקות)
-const INTERVAL_MINUTES = 20;
-
-// =============================
-// 🧠 בדיקת טווח שעות
-// =============================
-function isWithinActiveHours() {
-  const now = new Date();
-  const israelHour = new Date(
-    now.toLocaleString("en-US", { timeZone: "Asia/Jerusalem" })
-  ).getHours();
-
-  return israelHour >= START_HOUR && israelHour < END_HOUR;
-}
-
-// =============================
-// 🔑 חתימת API
-// =============================
-function generateSign(params) {
-  const sortedKeys = Object.keys(params).sort();
-  let baseString = APP_SECRET;
-
-  sortedKeys.forEach(key => {
-    baseString += key + params[key];
-  });
-
-  baseString += APP_SECRET;
-
-  return crypto
-    .createHash("md5")
-    .update(baseString)
-    .digest("hex")
-    .toUpperCase();
-}
-
-// =============================
-// 📦 קריאת מוצרים לפי מילת מפתח
-// =============================
-async function fetchProductByKeyword(keyword) {
-  const params = {
-    app_key: APP_KEY,
-    method: "aliexpress.affiliate.product.query",
-    sign_method: "md5",
-    timestamp: Date.now(),
-    format: "json",
-    v: "2.0",
-    tracking_id: TRACKING_ID,
-    keywords: keyword,
-    page_no: 1,
-    page_size: 5,
-    fields: "product_title,promotion_link,app_sale_price"
-  };
-
-  params.sign = generateSign(params);
-
-  const response = await axios.post(
-    "https://api-sg.aliexpress.com/sync",
-    null,
-    { params }
-  );
-
-  return response.data?.aliexpress_affiliate_product_query_response
-    ?.resp_result?.result?.products || [];
-}
-
-// =============================
-// 🚀 שליחה אוטומטית
-// =============================
-async function runBot() {
-  if (!isWithinActiveHours()) {
-    console.log("⏰ מחוץ לשעות פעילות");
-    return;
-  }
-
-  const randomKeyword =
-    KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
-
-  console.log("🔎 מחפש לפי:", randomKeyword);
-
-  try {
-    const products = await fetchProductByKeyword(randomKeyword);
-
-    if (!products.length) {
-      console.log("❌ לא נמצאו מוצרים");
-      return;
+    } catch (error) {
+        console.error('שגיאה בסריקת האתר:', error.message);
     }
-
-    const product =
-      products[Math.floor(Math.random() * products.length)];
-
-    console.log("🔥 מוצר שנבחר:");
-    console.log(product.product_title);
-    console.log(product.promotion_link);
-
-    // כאן תכניס את פונקציית השליחה לצ'אט שלך
-
-  } catch (err) {
-    console.log("❌ שגיאה:");
-    console.log(err.response?.data || err.message);
-  }
 }
 
-// =============================
-// ▶️ הפעלה
-// =============================
-console.log("🚀 הבוט האוטומטי הופעל");
-
-runBot();
-setInterval(runBot, INTERVAL_MINUTES * 60 * 1000);
+// הרצה
+scrapeDeals();
