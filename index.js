@@ -1,41 +1,60 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
+const axios = require("axios");
+const crypto = require("crypto");
 
-async function scrapeDeals() {
-    try {
-        // הכתובת של האתר שבו נמצאים המבצעים
-        const url = 'https://www.example-deals-site.co.il'; 
-        
-        const { data } = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-        });
+const APP_KEY = process.env.APP_KEY;
+const APP_SECRET = process.env.APP_SECRET;
+const TRACKING_ID = process.env.TRACKING_ID;
 
-        // טעינת הקוד של הדף לתוך Cheerio
-        const $ = cheerio.load(data);
-        const deals = [];
+function generateSign(params) {
+  const sortedKeys = Object.keys(params).sort();
+  let baseString = APP_SECRET;
 
-        // כאן צריך להגדיר את ה"סלקטור" - מה מחפשים בדף?
-        // למשל: כל אלמנט עם קלאס של מוצר
-        $('.product-card').each((index, element) => {
-            const title = $(element).find('.title').text().trim();
-            const price = $(element).find('.price').text().trim();
-            
-            deals.push({ title, price });
-        });
+  sortedKeys.forEach(key => {
+    baseString += key + params[key];
+  });
 
-        if (deals.length > 0) {
-            console.log(`נמצאו ${deals.length} מבצעים חדשים!`);
-            console.log(deals.slice(0, 3)); // מציג את 3 הראשונים לבדיקה
-        } else {
-            console.log('לא נמצאו מבצעים. ייתכן שהסלקטורים השתנו.');
-        }
+  baseString += APP_SECRET;
 
-    } catch (error) {
-        console.error('שגיאה בסריקת האתר:', error.message);
-    }
+  return crypto
+    .createHash("md5")
+    .update(baseString)
+    .digest("hex")
+    .toUpperCase();
 }
 
-// הרצה
-scrapeDeals();
+async function testAPI() {
+  console.log("🔎 מתחיל בדיקת API נקייה...");
+
+  const params = {
+    app_key: APP_KEY,
+    method: "aliexpress.affiliate.product.query",
+    sign_method: "md5",
+    timestamp: Date.now(),
+    format: "json",
+    v: "2.0",
+    tracking_id: TRACKING_ID,
+    keywords: "iphone",
+    page_no: 1,
+    page_size: 3,
+    fields: "product_title,promotion_link"
+  };
+
+  params.sign = generateSign(params);
+
+  try {
+    const response = await axios.post(
+      "https://api-sg.aliexpress.com/sync",
+      null,
+      { params }
+    );
+
+    console.log("📦 תגובה מלאה מהשרת:");
+    console.log(JSON.stringify(response.data, null, 2));
+
+  } catch (err) {
+    console.log("❌ שגיאה:");
+    console.log(err.response?.data || err.message);
+  }
+}
+
+testAPI();
