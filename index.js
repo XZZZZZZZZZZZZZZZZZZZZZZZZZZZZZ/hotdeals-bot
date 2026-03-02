@@ -92,7 +92,8 @@ async function generateAffiliateLink(originalUrl) {
     v: "2.0",
     sign_method: "md5",
     source_values: originalUrl,
-    tracking_id: TRACKING_ID
+    tracking_id: TRACKING_ID,
+    promotion_link_type: 0
   };
 
   params.sign = generateSign(params);
@@ -102,20 +103,10 @@ async function generateAffiliateLink(originalUrl) {
     { params }
   );
 
-  const promoLink =
-    response.data
-      ?.aliexpress_affiliate_link_generate_response
-      ?.resp_result?.result?.promotion_links?.promotion_link?.[0]
-      ?.promotion_link;
-
-  if (!promoLink) {
-    console.log("❌ לא התקבל קישור שותפים!");
-    console.log(JSON.stringify(response.data, null, 2));
-    return null;
-  }
-
-  console.log("✅ התקבל קישור שותפים");
-  return promoLink;
+  return response.data
+    ?.aliexpress_affiliate_link_generate_response
+    ?.resp_result?.result?.promotion_links?.promotion_link?.[0]
+    ?.promotion_link || null;
 }
 
 // ======================
@@ -129,7 +120,6 @@ async function sendToChannel(message) {
       "X-API-Key": API_KEY
     }
   });
-
   console.log("✅ נשלח לצ'אט");
 }
 
@@ -163,26 +153,41 @@ async function fetchDeal() {
       response.data?.aliexpress_affiliate_product_query_response
         ?.resp_result?.result?.products?.product;
 
-    if (!products?.length) return;
-
-    const product = products.find(isValidPrice);
-    if (!product) return;
-
-    const affiliateLink = await generateAffiliateLink(
-      product.product_detail_url
-    );
-
-    if (!affiliateLink) {
-      console.log("⛔ דיל בוטל – אין קישור שותפים");
+    if (!products?.length) {
+      console.log("⚠️ אין מוצרים");
       return;
     }
 
-    const usd = parseFloat(product.app_sale_price);
+    let selectedProduct = null;
+    let affiliateLink = null;
+
+    for (const product of products) {
+      if (!isValidPrice(product)) continue;
+
+      const link = await generateAffiliateLink(
+        product.product_detail_url
+      );
+
+      if (link) {
+        selectedProduct = product;
+        affiliateLink = link;
+        break;
+      }
+    }
+
+    if (!selectedProduct || !affiliateLink) {
+      console.log("⛔ לא נמצא מוצר עם קישור שותפים");
+      return;
+    }
+
+    const usd = parseFloat(selectedProduct.app_sale_price);
     const ils = (usd * USD_TO_ILS).toFixed(2);
-    const translatedTitle = await translateToHebrew(product.product_title);
+    const translatedTitle = await translateToHebrew(
+      selectedProduct.product_title
+    );
 
     const message = {
-      text: `${product.product_main_image_url}
+      text: `${selectedProduct.product_main_image_url}
 
 🔥 דיל חדש במיוחד!
 
@@ -207,9 +212,16 @@ ${affiliateLink}`,
 // ⏰ לוח זמנים
 // ======================
 
+// ראשון–חמישי 08–23
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
+
+// שישי 08–14
 cron.schedule("*/20 8-14 * * 5", fetchDeal);
+
+// מוצ"ש 22–23
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
+
+// המשך מוצ"ש עד 01:00
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
 // הרצה מיידית
