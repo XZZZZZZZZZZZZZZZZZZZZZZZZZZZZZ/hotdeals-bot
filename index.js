@@ -71,12 +71,25 @@ async function fetchDeals() {
       return;
     }
 
-    const p = products[0];
+    // 🔥 סינון לפי 1₪–120₪
+    const filtered = products.find(product => {
+      const usd = parseFloat(product.app_sale_price || 0);
+      const ils = usd * 3.7;
+      return ils >= 1 && ils <= 120;
+    });
+
+    if (!filtered) {
+      console.log("לא נמצא מוצר בטווח 1₪–120₪");
+      return;
+    }
+
+    const usd = parseFloat(filtered.app_sale_price);
+    const ils = (usd * 3.7).toFixed(2);
 
     console.log("🔥 דיל:");
-    console.log(p.product_title);
-    console.log(p.app_sale_price + "$");
-    console.log(p.product_detail_url);
+    console.log(filtered.product_title);
+    console.log(ils + " ₪");
+    console.log(filtered.product_detail_url);
 
   } catch (err) {
     console.log("❌ שגיאה:");
