@@ -16,18 +16,18 @@ if (!APP_KEY || !APP_SECRET || !TRACKING_ID) {
 }
 
 // ======================
-// 🎯 ClickAndGo Config
+// 🎯 ClickAndGo API
 // ======================
 
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
-const TOKEN = "987654321";
+const API_KEY = "987654321";
 
 const USD_TO_ILS = 3.7;
 
 console.log("✅ הבוט עלה בהצלחה");
 
 // ======================
-// 🔐 חתימה AliExpress
+// 🔐 חתימה ל-AliExpress
 // ======================
 
 function generateSign(params) {
@@ -59,31 +59,24 @@ function isValidPrice(product) {
 
 async function sendToChannel(message) {
   try {
-    // ניסיון עם Bearer
-    await axios.post(CHANNEL_API_URL, message, {
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    });
-    console.log("✅ נשלח (עם Bearer)");
-    return;
-  } catch (err1) {
-    try {
-      // ניסיון בלי Bearer
-      await axios.post(CHANNEL_API_URL, message, {
+    const response = await axios.post(
+      CHANNEL_API_URL,
+      message,
+      {
         headers: {
-          Authorization: TOKEN,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "X-API-Key": API_KEY
         }
-      });
-      console.log("✅ נשלח (בלי Bearer)");
-      return;
-    } catch (err2) {
-      console.log("❌ כשל בשליחה:");
-      console.log(err2.response?.status);
-      console.log(err2.response?.data || err2.message);
-    }
+      }
+    );
+
+    console.log("✅ נשלח לצ'אט");
+    return response.data;
+
+  } catch (error) {
+    console.log("❌ שגיאה בשליחה:");
+    console.log("Status:", error.response?.status);
+    console.log("Response:", error.response?.data || error.message);
   }
 }
 
