@@ -3,25 +3,24 @@ const crypto = require("crypto");
 const cron = require("node-cron");
 
 // ==========================
-// 🔐 ENV (מוגדר ב-Railway)
+// 🔐 ENV (Railway Variables)
 // ==========================
 
 const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
 const TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-// 👇 שים כאן את כתובת ה-API של הערוץ שלך
-const CHANNEL_API_URL = "PUT_YOUR_CHANNEL_API_URL_HERE";
-
 if (!APP_KEY || !APP_SECRET || !TRACKING_ID) {
-  console.log("❌ חסרים מפתחות API");
+  console.log("❌ חסרים מפתחות API של AliExpress");
   process.exit(1);
 }
 
-if (!CHANNEL_API_URL) {
-  console.log("❌ חסרה כתובת API של הערוץ");
-  process.exit(1);
-}
+// ==========================
+// 🎯 ClickAndGo Config
+// ==========================
+
+const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
+const CHANNEL_TOKEN = "987654321";
 
 console.log("✅ הכול נטען בהצלחה");
 
@@ -44,6 +43,17 @@ function generateSign(params) {
     .update(base)
     .digest("hex")
     .toUpperCase();
+}
+
+// ==========================
+// 💰 סינון 1₪–120₪
+/** דולר לשקל בקירוב **/
+const USD_TO_ILS = 3.7;
+
+function isInPriceRange(product) {
+  const usd = parseFloat(product.app_sale_price || 0);
+  const ils = usd * USD_TO_ILS;
+  return ils >= 1 && ils <= 120;
 }
 
 // ==========================
@@ -81,12 +91,7 @@ async function fetchDeals() {
       return;
     }
 
-    // 🔥 סינון לפי 1₪–120₪
-    const filtered = products.find(product => {
-      const usd = parseFloat(product.app_sale_price || 0);
-      const ils = usd * 3.7;
-      return ils >= 1 && ils <= 120;
-    });
+    const filtered = products.find(isInPriceRange);
 
     if (!filtered) {
       console.log("⚠️ אין מוצר בטווח 1₪–120₪");
@@ -94,7 +99,7 @@ async function fetchDeals() {
     }
 
     const usd = parseFloat(filtered.app_sale_price);
-    const ils = (usd * 3.7).toFixed(2);
+    const ils = (usd * USD_TO_ILS).toFixed(2);
 
     const message = {
       text: `🔥 ${filtered.product_title}
@@ -104,9 +109,18 @@ async function fetchDeals() {
       timestamp: new Date().toISOString()
     };
 
-    await axios.post(CHANNEL_API_URL, message);
+    await axios.post(
+      CHANNEL_API_URL,
+      message,
+      {
+        headers: {
+          Authorization: `Bearer ${CHANNEL_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
 
-    console.log("✅ דיל נשלח לערוץ בהצלחה");
+    console.log("✅ דיל נשלח בהצלחה לצ'אט");
 
   } catch (err) {
     console.log("❌ שגיאה:");
