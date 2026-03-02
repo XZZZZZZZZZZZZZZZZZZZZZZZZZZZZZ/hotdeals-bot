@@ -44,7 +44,7 @@ function generateSign(params) {
 }
 
 // ======================
-// 💰 סינון מחיר
+// 💰 סינון מחיר 1₪–120₪
 // ======================
 
 function isValidPrice(product) {
@@ -59,7 +59,7 @@ function isValidPrice(product) {
 
 async function sendToChannel(message) {
   try {
-    const response = await axios.post(
+    await axios.post(
       CHANNEL_API_URL,
       message,
       {
@@ -71,7 +71,6 @@ async function sendToChannel(message) {
     );
 
     console.log("✅ נשלח לצ'אט");
-    return response.data;
 
   } catch (error) {
     console.log("❌ שגיאה בשליחה:");
@@ -125,10 +124,13 @@ async function fetchDeal() {
     const usd = parseFloat(product.app_sale_price);
     const ils = (usd * USD_TO_ILS).toFixed(2);
 
+    // 🔥 כאן השינוי היחיד – ניסוח בעברית + תמונה
     const message = {
-      text: `🔥 ${product.product_title}
-💰 ${ils} ₪
-🔗 ${product.product_detail_url}`,
+      text: `🔥 דיל חדש במיוחד!
+📦 ${product.product_title}
+💰 מחיר: ${ils} ₪
+🖼 תמונה: ${product.product_main_image_url}
+🔗 קישור לרכישה: ${product.product_detail_url}`,
       author: "Deals Bot",
       timestamp: new Date().toISOString()
     };
