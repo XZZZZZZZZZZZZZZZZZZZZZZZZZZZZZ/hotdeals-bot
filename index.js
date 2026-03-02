@@ -2,24 +2,32 @@ const axios = require("axios");
 const crypto = require("crypto");
 const cron = require("node-cron");
 
-// ==================
-// ENV
-// ==================
+// ==========================
+// 🔐 ENV (מוגדר ב-Railway)
+// ==========================
 
 const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
 const TRACKING_ID = process.env.ALI_TRACKING_ID;
+
+// 👇 שים כאן את כתובת ה-API של הערוץ שלך
+const CHANNEL_API_URL = "PUT_YOUR_CHANNEL_API_URL_HERE";
 
 if (!APP_KEY || !APP_SECRET || !TRACKING_ID) {
   console.log("❌ חסרים מפתחות API");
   process.exit(1);
 }
 
-console.log("✅ API נטען");
+if (!CHANNEL_API_URL) {
+  console.log("❌ חסרה כתובת API של הערוץ");
+  process.exit(1);
+}
 
-// ==================
-// חתימה
-// ==================
+console.log("✅ הכול נטען בהצלחה");
+
+// ==========================
+// 🔐 חתימה ל-AliExpress
+// ==========================
 
 function generateSign(params) {
   const sorted = Object.keys(params).sort();
@@ -31,12 +39,16 @@ function generateSign(params) {
 
   base += APP_SECRET;
 
-  return crypto.createHash("md5").update(base).digest("hex").toUpperCase();
+  return crypto
+    .createHash("md5")
+    .update(base)
+    .digest("hex")
+    .toUpperCase();
 }
 
-// ==================
-// חיפוש
-// ==================
+// ==========================
+// 🚂 שליפת דילים
+// ==========================
 
 async function fetchDeals() {
   console.log("🚂 מתחיל חיפוש...");
@@ -60,14 +72,12 @@ async function fetchDeals() {
       { params }
     );
 
-    console.log("תגובה התקבלה");
-
     const products =
       response.data?.aliexpress_affiliate_product_query_response
         ?.resp_result?.result?.products?.product;
 
     if (!products || !products.length) {
-      console.log("לא נמצאו מוצרים");
+      console.log("⚠️ לא נמצאו מוצרים");
       return;
     }
 
@@ -79,17 +89,24 @@ async function fetchDeals() {
     });
 
     if (!filtered) {
-      console.log("לא נמצא מוצר בטווח 1₪–120₪");
+      console.log("⚠️ אין מוצר בטווח 1₪–120₪");
       return;
     }
 
     const usd = parseFloat(filtered.app_sale_price);
     const ils = (usd * 3.7).toFixed(2);
 
-    console.log("🔥 דיל:");
-    console.log(filtered.product_title);
-    console.log(ils + " ₪");
-    console.log(filtered.product_detail_url);
+    const message = {
+      text: `🔥 ${filtered.product_title}
+💰 ${ils} ₪
+🔗 ${filtered.product_detail_url}`,
+      author: "Deals Bot",
+      timestamp: new Date().toISOString()
+    };
+
+    await axios.post(CHANNEL_API_URL, message);
+
+    console.log("✅ דיל נשלח לערוץ בהצלחה");
 
   } catch (err) {
     console.log("❌ שגיאה:");
@@ -97,22 +114,22 @@ async function fetchDeals() {
   }
 }
 
-// ==================
-// הרצה מיידית
-// ==================
+// ==========================
+// ▶️ הרצה מיידית
+// ==========================
 
 fetchDeals();
 
-// ==================
-// כל 20 דקות
-// ==================
+// ==========================
+// ⏰ כל 20 דקות
+// ==========================
 
 cron.schedule("*/20 * * * *", () => {
   fetchDeals();
 });
 
-// ==================
-// לשמור תהליך חי
-// ==================
+// ==========================
+// 🧱 שמירת תהליך חי
+// ==========================
 
 setInterval(() => {}, 1000);
