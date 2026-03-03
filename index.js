@@ -23,31 +23,39 @@ if (!APP_KEY || !APP_SECRET || !TRACKING_ID) {
 
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
-const USD_TO_ILS = 3.7;
+
+console.log("✅ Affiliate Bot Started");
 
 // ======================
 // 🔁 רוטציית מילות מפתח
 // ======================
 
-const KEYWORDS = [
-  "smart watch",
-  "bluetooth earbuds",
-  "car accessories",
-  "gaming gadgets",
-  "kitchen gadgets",
-  "phone accessories"
-];
-
-let keywordIndex = 0;
+let lastKeyword = null;
 
 function getNextKeyword() {
-  const keyword = KEYWORDS[keywordIndex];
-  keywordIndex = (keywordIndex + 1) % KEYWORDS.length;
-  return keyword;
+
+  const KEYWORDS = [
+    "smart watch",
+    "bluetooth earbuds",
+    "car accessories",
+    "gaming gadgets",
+    "kitchen gadgets",
+    "phone accessories"
+  ];
+
+  let selected;
+
+  do {
+    selected = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
+  } while (selected === lastKeyword && KEYWORDS.length > 1);
+
+  lastKeyword = selected;
+
+  return selected;
 }
 
 // ======================
-// 🚫 מניעת כפילויות (בזיכרון)
+// 🚫 מניעת כפילויות
 // ======================
 
 const sentProducts = new Set();
@@ -94,13 +102,23 @@ async function translateToHebrew(text) {
 }
 
 // ======================
-// 💰 סינון מחיר
+// 💰 סינון מחיר (ללא המרה!)
 // ======================
 
 function isValidPrice(product) {
-  const usd = parseFloat(product.app_sale_price || 0);
-  const ils = usd * USD_TO_ILS;
-  return ils >= 1 && ils <= 120;
+
+  let priceString =
+    product.target_app_sale_price ||
+    product.app_sale_price ||
+    "0";
+
+  if (priceString.includes("-")) {
+    priceString = priceString.split("-")[0].trim();
+  }
+
+  const price = parseFloat(priceString);
+
+  return price >= 1 && price <= 120;
 }
 
 // ======================
@@ -163,7 +181,7 @@ async function fetchDeal() {
     format: "json",
     v: "2.0",
     sign_method: "md5",
-    keywords: getNextKeyword(), // ← פה הרוטציה
+    keywords: getNextKeyword(),
     tracking_id: TRACKING_ID
   };
 
@@ -186,10 +204,7 @@ async function fetchDeal() {
 
     for (const product of products) {
 
-      if (sentProducts.has(product.product_id)) {
-        continue; // כפילות
-      }
-
+      if (sentProducts.has(product.product_id)) continue;
       if (!isValidPrice(product)) continue;
 
       const link = await generateAffiliateLink(
@@ -199,7 +214,7 @@ async function fetchDeal() {
       if (link) {
         selectedProduct = product;
         affiliateLink = link;
-        sentProducts.add(product.product_id); // שמירה בזיכרון
+        sentProducts.add(product.product_id);
         break;
       }
     }
@@ -209,8 +224,19 @@ async function fetchDeal() {
       return;
     }
 
-    const usd = parseFloat(selectedProduct.app_sale_price);
-    const ils = (usd * USD_TO_ILS).toFixed(2);
+    // 🔥 חישוב מחיר מתוקן (בלי המרה!)
+
+    let priceString =
+      selectedProduct.target_app_sale_price ||
+      selectedProduct.app_sale_price ||
+      "0";
+
+    if (priceString.includes("-")) {
+      priceString = priceString.split("-")[0].trim();
+    }
+
+    const finalPrice = parseFloat(priceString).toFixed(2);
+
     const translatedTitle = await translateToHebrew(
       selectedProduct.product_title
     );
@@ -222,7 +248,7 @@ async function fetchDeal() {
 
 📦 ${translatedTitle}
 
-💰 מחיר: ${ils} ₪
+💰 מחיר: ${finalPrice} ₪
 🛒 להזמנה:
 ${affiliateLink}`,
       author: "Deals Bot",
@@ -238,7 +264,7 @@ ${affiliateLink}`,
 }
 
 // ======================
-// ⏰ לוח זמנים (נשאר כמו שהיה)
+// ⏰ לוח זמנים
 // ======================
 
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
@@ -246,8 +272,5 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-// הרצה מיידית
 fetchDeal();
-
-// שמירה חיה
 setInterval(() => {}, 1000);
