@@ -25,7 +25,32 @@ const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 const USD_TO_ILS = 3.7;
 
-console.log("✅ Affiliate Bot Started");
+// ======================
+// 🔁 רוטציית מילות מפתח
+// ======================
+
+const KEYWORDS = [
+  "smart watch",
+  "bluetooth earbuds",
+  "car accessories",
+  "gaming gadgets",
+  "kitchen gadgets",
+  "phone accessories"
+];
+
+let keywordIndex = 0;
+
+function getNextKeyword() {
+  const keyword = KEYWORDS[keywordIndex];
+  keywordIndex = (keywordIndex + 1) % KEYWORDS.length;
+  return keyword;
+}
+
+// ======================
+// 🚫 מניעת כפילויות (בזיכרון)
+// ======================
+
+const sentProducts = new Set();
 
 // ======================
 // 🔐 חתימה
@@ -79,7 +104,7 @@ function isValidPrice(product) {
 }
 
 // ======================
-// 🔗 יצירת קישור שותפים אמיתי
+// 🔗 יצירת קישור שותפים
 // ======================
 
 async function generateAffiliateLink(originalUrl) {
@@ -120,6 +145,7 @@ async function sendToChannel(message) {
       "X-API-Key": API_KEY
     }
   });
+
   console.log("✅ נשלח לצ'אט");
 }
 
@@ -137,7 +163,7 @@ async function fetchDeal() {
     format: "json",
     v: "2.0",
     sign_method: "md5",
-    keywords: "smart watch",
+    keywords: getNextKeyword(), // ← פה הרוטציה
     tracking_id: TRACKING_ID
   };
 
@@ -153,15 +179,17 @@ async function fetchDeal() {
       response.data?.aliexpress_affiliate_product_query_response
         ?.resp_result?.result?.products?.product;
 
-    if (!products?.length) {
-      console.log("⚠️ אין מוצרים");
-      return;
-    }
+    if (!products?.length) return;
 
     let selectedProduct = null;
     let affiliateLink = null;
 
     for (const product of products) {
+
+      if (sentProducts.has(product.product_id)) {
+        continue; // כפילות
+      }
+
       if (!isValidPrice(product)) continue;
 
       const link = await generateAffiliateLink(
@@ -171,12 +199,13 @@ async function fetchDeal() {
       if (link) {
         selectedProduct = product;
         affiliateLink = link;
+        sentProducts.add(product.product_id); // שמירה בזיכרון
         break;
       }
     }
 
     if (!selectedProduct || !affiliateLink) {
-      console.log("⛔ לא נמצא מוצר עם קישור שותפים");
+      console.log("⛔ לא נמצא מוצר חדש עם קישור שותפים");
       return;
     }
 
@@ -209,19 +238,12 @@ ${affiliateLink}`,
 }
 
 // ======================
-// ⏰ לוח זמנים
+// ⏰ לוח זמנים (נשאר כמו שהיה)
 // ======================
 
-// ראשון–חמישי 08–23
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
-
-// שישי 08–14
 cron.schedule("*/20 8-14 * * 5", fetchDeal);
-
-// מוצ"ש 22–23
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
-
-// המשך מוצ"ש עד 01:00
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
 // הרצה מיידית
