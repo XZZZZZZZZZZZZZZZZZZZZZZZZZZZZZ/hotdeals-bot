@@ -24,28 +24,7 @@ if (!APP_KEY || !APP_SECRET || !TRACKING_ID) {
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
-console.log("✅ Affiliate Bot Started");
-
-// ======================
-// 💱 שער דולר אוטומטי
-// ======================
-
-let USD_TO_ILS = 3.7;
-
-async function updateExchangeRate() {
-  try {
-    const res = await axios.get(
-      "https://api.exchangerate.host/latest?base=USD&symbols=ILS"
-    );
-    USD_TO_ILS = res.data.rates.ILS;
-    console.log("💱 שער דולר:", USD_TO_ILS);
-  } catch {
-    console.log("⚠ משתמשים בשער ברירת מחדל");
-  }
-}
-
-updateExchangeRate();
-setInterval(updateExchangeRate, 1000 * 60 * 60);
+console.log("✅ Affiliate Bot Started (IL Mode)");
 
 // ======================
 // 🔁 רוטציית מילות מפתח
@@ -125,7 +104,7 @@ async function translateToHebrew(text) {
 }
 
 // ======================
-// 💰 חילוץ מחיר מינימלי אמיתי
+// 💰 חילוץ מחיר (ILS מה-API)
 // ======================
 
 function extractLowestPrice(product) {
@@ -181,53 +160,30 @@ async function generateAffiliateLink(originalUrl) {
 // 🧠 טקסט שיווקי משתנה
 // ======================
 
-function randomIntro(title) {
-  const templates = [
-    `🔧 הגיע הזמן לשדרג – ${title}`,
-    `נמאס מהמוצר הישן? תכיר את ${title}`,
-    `ככה מקצוענים עובדים – ${title}`,
-    `פתרון חכם שעושה סדר – ${title}`,
-    `אם אתה רציני לגבי איכות – ${title}`
-  ];
-  return templates[Math.floor(Math.random() * templates.length)];
-}
-
-function randomBullets() {
-
-  const sets = [
-    [
-      "✔ איכות בנייה קשוחה במיוחד",
-      "✔ נוחות שימוש מקסימלית",
-      "✔ מתאים לבית ולעבודה מקצועית",
-      "✔ חוסך זמן וכאב ראש"
-    ],
-    [
-      "✔ בנוי להחזיק לאורך זמן",
-      "✔ עיצוב חכם ופרקטי",
-      "✔ ניידות מושלמת",
-      "✔ ביצועים מעולים"
-    ],
-    [
-      "✔ פתרון חכם ומסודר",
-      "✔ איכות גבוהה",
-      "✔ שליטה מלאה",
-      "✔ פשוט עובד"
-    ]
-  ];
-
-  const selected = sets[Math.floor(Math.random() * sets.length)];
-  return selected.join("\n");
-}
-
 function buildMarketingText(title, price) {
 
-  return `${randomIntro(title)}
+  const intros = [
+    `🔥 הגיע הזמן לשדרג – ${title}`,
+    `💪 ככה מקצוענים עובדים – ${title}`,
+    `⚡ פתרון חכם במיוחד – ${title}`
+  ];
 
-${randomBullets()}
+  const bullets = [
+    "✔ איכות בנייה גבוהה",
+    "✔ נוחות שימוש מושלמת",
+    "✔ מתאים לבית ולעבודה מקצועית",
+    "✔ פתרון שחוסך זמן"
+  ];
+
+  const intro = intros[Math.floor(Math.random() * intros.length)];
+
+  return `${intro}
+
+${bullets.join("\n")}
 
 💰 עכשיו רק ב־₪${price}
 
-אל תתפשר על פחות ממצוין – זה הזמן לשדרג.`;
+אל תתפשר על פחות ממצוין.`;
 }
 
 // ======================
@@ -262,7 +218,11 @@ async function fetchDeal() {
     v: "2.0",
     sign_method: "md5",
     keywords: getNextKeyword(),
-    tracking_id: TRACKING_ID
+    tracking_id: TRACKING_ID,
+
+    // 🔥 חשוב – אזור ישראל
+    ship_to_country: "IL",
+    target_currency: "ILS"
   };
 
   params.sign = generateSign(params);
@@ -287,8 +247,8 @@ async function fetchDeal() {
 
       if (sentProducts.has(product.product_id)) continue;
 
-      const usd = extractLowestPrice(product);
-      if (!usd || usd <= 0) continue;
+      const price = extractLowestPrice(product);
+      if (!price || price <= 0) continue;
 
       const link =
         await generateAffiliateLink(product.product_detail_url);
@@ -303,14 +263,14 @@ async function fetchDeal() {
 
     if (!selectedProduct || !affiliateLink) return;
 
-    const usdPrice = extractLowestPrice(selectedProduct);
-    const ilsPrice = (usdPrice * USD_TO_ILS).toFixed(2);
+    const finalPrice =
+      extractLowestPrice(selectedProduct).toFixed(2);
 
     const translatedTitle =
       await translateToHebrew(selectedProduct.product_title);
 
     const marketingText =
-      buildMarketingText(translatedTitle, ilsPrice);
+      buildMarketingText(translatedTitle, finalPrice);
 
     const message = {
       text: `${selectedProduct.product_main_image_url}
