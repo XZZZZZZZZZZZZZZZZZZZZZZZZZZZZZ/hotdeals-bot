@@ -73,7 +73,8 @@ function generateSign(params) {
 
   base += APP_SECRET;
 
-  return crypto.createHash("md5")
+  return crypto
+    .createHash("md5")
     .update(base)
     .digest("hex")
     .toUpperCase();
@@ -104,7 +105,7 @@ async function translateToHebrew(text) {
 }
 
 // ======================
-// 💰 חילוץ מחיר (ILS מה-API)
+// 💰 חילוץ מחיר מינימלי
 // ======================
 
 function extractLowestPrice(product) {
@@ -157,33 +158,63 @@ async function generateAffiliateLink(originalUrl) {
 }
 
 // ======================
-// 🧠 טקסט שיווקי משתנה
+// 🧠 מערכת קופירייטינג רמה 3
 // ======================
+
+function randomFrom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function shuffle(array) {
+  return array.sort(() => 0.5 - Math.random());
+}
 
 function buildMarketingText(title, price) {
 
   const intros = [
-    `🔥 הגיע הזמן לשדרג – ${title}`,
-    `💪 ככה מקצוענים עובדים – ${title}`,
-    `⚡ פתרון חכם במיוחד – ${title}`
+    `נמאס להתפשר? ${title} זה בדיוק מה שחיפשת.`,
+    `יש מוצרים רגילים… ויש את ${title}.`,
+    `אם אתה אוהב איכות – ${title} הולך להרשים.`,
+    `זה מסוג המוצרים שאומרים עליהם: למה לא קניתי קודם?`,
+    `שדרוג קטן – הבדל ענק. ${title}.`,
+    `לא עוד פתרון בינוני – ${title} משנה את המשחק.`,
+    `ככה מקצוענים עובדים – ${title}.`
   ];
 
-  const bullets = [
-    "✔ איכות בנייה גבוהה",
-    "✔ נוחות שימוש מושלמת",
-    "✔ מתאים לבית ולעבודה מקצועית",
-    "✔ פתרון שחוסך זמן"
+  const featurePool = [
+    "בנייה איכותית ועמידה לאורך זמן",
+    "עיצוב חכם שחוסך מקום",
+    "נוחות שימוש מקסימלית",
+    "מתאים לבית ולעבודה מקצועית",
+    "פתרון פרקטי לשימוש יומיומי",
+    "קומפקטי אבל עוצמתי",
+    "שליטה מלאה בלי בלגן",
+    "עמיד לשימוש אינטנסיבי",
+    "משדרג את חוויית העבודה",
+    "קל לתפעול כבר מהרגע הראשון"
   ];
 
-  const intro = intros[Math.floor(Math.random() * intros.length)];
+  const urgency = [
+    "המלאי לא נשאר לנצח.",
+    "במחיר כזה זה לא מחכה הרבה.",
+    "מי שתופס – מרוויח.",
+    "אל תחכה שהמחיר יעלה.",
+    "הזדמנות שלא רואים כל יום."
+  ];
 
-  return `${intro}
+  const selectedFeatures = shuffle(featurePool).slice(0, 4);
 
-${bullets.join("\n")}
+  const bullets = selectedFeatures
+    .map(f => `✔ ${f}`)
+    .join("\n");
+
+  return `${randomFrom(intros)}
+
+${bullets}
 
 💰 עכשיו רק ב־₪${price}
 
-אל תתפשר על פחות ממצוין.`;
+${randomFrom(urgency)}`;
 }
 
 // ======================
@@ -219,8 +250,6 @@ async function fetchDeal() {
     sign_method: "md5",
     keywords: getNextKeyword(),
     tracking_id: TRACKING_ID,
-
-    // 🔥 חשוב – אזור ישראל
     ship_to_country: "IL",
     target_currency: "ILS"
   };
@@ -264,7 +293,7 @@ async function fetchDeal() {
     if (!selectedProduct || !affiliateLink) return;
 
     const finalPrice =
-      extractLowestPrice(selectedProduct).toFixed(2);
+      Math.round(extractLowestPrice(selectedProduct));
 
     const translatedTitle =
       await translateToHebrew(selectedProduct.product_title);
