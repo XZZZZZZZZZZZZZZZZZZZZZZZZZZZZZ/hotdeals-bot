@@ -38,7 +38,7 @@ async function updateExchangeRate() {
       "https://api.exchangerate.host/latest?base=USD&symbols=ILS"
     );
     USD_TO_ILS = res.data.rates.ILS;
-    console.log("💱 שער דולר עודכן:", USD_TO_ILS);
+    console.log("💱 שער דולר:", USD_TO_ILS);
   } catch {
     console.log("⚠ משתמשים בשער ברירת מחדל");
   }
@@ -60,7 +60,7 @@ function getNextKeyword() {
     "bluetooth earbuds",
     "car accessories",
     "gaming gadgets",
-    "kitchen gadgets",
+    "kitchen tools",
     "phone accessories"
   ];
 
@@ -125,24 +125,25 @@ async function translateToHebrew(text) {
 }
 
 // ======================
-// 💰 סינון מחיר (בדולר)
+// 💰 חילוץ מחיר מינימלי אמיתי
 // ======================
 
-function isValidPrice(product) {
+function extractLowestPrice(product) {
 
   let priceString =
     product.target_app_sale_price ||
     product.app_sale_price ||
+    product.original_price ||
     "0";
 
   if (priceString.includes("-")) {
-    priceString = priceString.split("-")[0].trim();
+    const parts = priceString
+      .split("-")
+      .map(p => parseFloat(p.trim()));
+    return Math.min(...parts);
   }
 
-  const usd = parseFloat(priceString);
-
-  return usd >= 0.3 && usd <= 40; 
-  // בערך 1₪–120₪ לפי שער ממוצע
+  return parseFloat(priceString);
 }
 
 // ======================
@@ -177,21 +178,56 @@ async function generateAffiliateLink(originalUrl) {
 }
 
 // ======================
-// 📝 תיאור מסודר
+// 🧠 טקסט שיווקי משתנה
 // ======================
 
-function buildDescription(title, price) {
-  return `🔥 דיל חם במיוחד!
+function randomIntro(title) {
+  const templates = [
+    `🔧 הגיע הזמן לשדרג – ${title}`,
+    `נמאס מהמוצר הישן? תכיר את ${title}`,
+    `ככה מקצוענים עובדים – ${title}`,
+    `פתרון חכם שעושה סדר – ${title}`,
+    `אם אתה רציני לגבי איכות – ${title}`
+  ];
+  return templates[Math.floor(Math.random() * templates.length)];
+}
 
-📦 ${title}
+function randomBullets() {
 
-💰 מחיר מיוחד: ${price} ₪
+  const sets = [
+    [
+      "✔ איכות בנייה קשוחה במיוחד",
+      "✔ נוחות שימוש מקסימלית",
+      "✔ מתאים לבית ולעבודה מקצועית",
+      "✔ חוסך זמן וכאב ראש"
+    ],
+    [
+      "✔ בנוי להחזיק לאורך זמן",
+      "✔ עיצוב חכם ופרקטי",
+      "✔ ניידות מושלמת",
+      "✔ ביצועים מעולים"
+    ],
+    [
+      "✔ פתרון חכם ומסודר",
+      "✔ איכות גבוהה",
+      "✔ שליטה מלאה",
+      "✔ פשוט עובד"
+    ]
+  ];
 
-✅ מוצר פופולרי
-🚚 משלוח ישיר מהספק
-🔒 רכישה מאובטחת
+  const selected = sets[Math.floor(Math.random() * sets.length)];
+  return selected.join("\n");
+}
 
-מהרו לפני שיגמר!`;
+function buildMarketingText(title, price) {
+
+  return `${randomIntro(title)}
+
+${randomBullets()}
+
+💰 עכשיו רק ב־₪${price}
+
+אל תתפשר על פחות ממצוין – זה הזמן לשדרג.`;
 }
 
 // ======================
@@ -199,6 +235,7 @@ function buildDescription(title, price) {
 // ======================
 
 async function sendToChannel(message) {
+
   await axios.post(CHANNEL_API_URL, message, {
     headers: {
       "Content-Type": "application/json",
@@ -249,11 +286,12 @@ async function fetchDeal() {
     for (const product of products) {
 
       if (sentProducts.has(product.product_id)) continue;
-      if (!isValidPrice(product)) continue;
 
-      const link = await generateAffiliateLink(
-        product.product_detail_url
-      );
+      const usd = extractLowestPrice(product);
+      if (!usd || usd <= 0) continue;
+
+      const link =
+        await generateAffiliateLink(product.product_detail_url);
 
       if (link) {
         selectedProduct = product;
@@ -265,29 +303,19 @@ async function fetchDeal() {
 
     if (!selectedProduct || !affiliateLink) return;
 
-    // 💰 חישוב מחיר מתוקן
-    let priceString =
-      selectedProduct.target_app_sale_price ||
-      selectedProduct.app_sale_price ||
-      "0";
-
-    if (priceString.includes("-")) {
-      priceString = priceString.split("-")[0].trim();
-    }
-
-    const usdPrice = parseFloat(priceString);
+    const usdPrice = extractLowestPrice(selectedProduct);
     const ilsPrice = (usdPrice * USD_TO_ILS).toFixed(2);
 
     const translatedTitle =
       await translateToHebrew(selectedProduct.product_title);
 
-    const description =
-      buildDescription(translatedTitle, ilsPrice);
+    const marketingText =
+      buildMarketingText(translatedTitle, ilsPrice);
 
     const message = {
       text: `${selectedProduct.product_main_image_url}
 
-${description}
+${marketingText}
 
 🛒 להזמנה:
 ${affiliateLink}`,
