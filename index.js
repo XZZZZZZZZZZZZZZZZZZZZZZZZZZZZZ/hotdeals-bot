@@ -27,6 +27,27 @@ const API_KEY = "987654321";
 console.log("✅ Affiliate Bot Started");
 
 // ======================
+// 💱 שער דולר אוטומטי
+// ======================
+
+let USD_TO_ILS = 3.7;
+
+async function updateExchangeRate() {
+  try {
+    const res = await axios.get(
+      "https://api.exchangerate.host/latest?base=USD&symbols=ILS"
+    );
+    USD_TO_ILS = res.data.rates.ILS;
+    console.log("💱 שער דולר עודכן:", USD_TO_ILS);
+  } catch {
+    console.log("⚠ משתמשים בשער ברירת מחדל");
+  }
+}
+
+updateExchangeRate();
+setInterval(updateExchangeRate, 1000 * 60 * 60);
+
+// ======================
 // 🔁 רוטציית מילות מפתח
 // ======================
 
@@ -50,7 +71,6 @@ function getNextKeyword() {
   } while (selected === lastKeyword && KEYWORDS.length > 1);
 
   lastKeyword = selected;
-
   return selected;
 }
 
@@ -74,7 +94,10 @@ function generateSign(params) {
 
   base += APP_SECRET;
 
-  return crypto.createHash("md5").update(base).digest("hex").toUpperCase();
+  return crypto.createHash("md5")
+    .update(base)
+    .digest("hex")
+    .toUpperCase();
 }
 
 // ======================
@@ -102,7 +125,7 @@ async function translateToHebrew(text) {
 }
 
 // ======================
-// 💰 סינון מחיר (ללא המרה!)
+// 💰 סינון מחיר (בדולר)
 // ======================
 
 function isValidPrice(product) {
@@ -116,9 +139,10 @@ function isValidPrice(product) {
     priceString = priceString.split("-")[0].trim();
   }
 
-  const price = parseFloat(priceString);
+  const usd = parseFloat(priceString);
 
-  return price >= 1 && price <= 120;
+  return usd >= 0.3 && usd <= 40; 
+  // בערך 1₪–120₪ לפי שער ממוצע
 }
 
 // ======================
@@ -153,6 +177,24 @@ async function generateAffiliateLink(originalUrl) {
 }
 
 // ======================
+// 📝 תיאור מסודר
+// ======================
+
+function buildDescription(title, price) {
+  return `🔥 דיל חם במיוחד!
+
+📦 ${title}
+
+💰 מחיר מיוחד: ${price} ₪
+
+✅ מוצר פופולרי
+🚚 משלוח ישיר מהספק
+🔒 רכישה מאובטחת
+
+מהרו לפני שיגמר!`;
+}
+
+// ======================
 // 🚀 שליחה לצ'אט
 // ======================
 
@@ -172,6 +214,7 @@ async function sendToChannel(message) {
 // ======================
 
 async function fetchDeal() {
+
   console.log("🔎 מחפש דיל...");
 
   const params = {
@@ -188,6 +231,7 @@ async function fetchDeal() {
   params.sign = generateSign(params);
 
   try {
+
     const response = await axios.get(
       "https://api-sg.aliexpress.com/sync",
       { params }
@@ -219,13 +263,9 @@ async function fetchDeal() {
       }
     }
 
-    if (!selectedProduct || !affiliateLink) {
-      console.log("⛔ לא נמצא מוצר חדש עם קישור שותפים");
-      return;
-    }
+    if (!selectedProduct || !affiliateLink) return;
 
-    // 🔥 חישוב מחיר מתוקן (בלי המרה!)
-
+    // 💰 חישוב מחיר מתוקן
     let priceString =
       selectedProduct.target_app_sale_price ||
       selectedProduct.app_sale_price ||
@@ -235,20 +275,20 @@ async function fetchDeal() {
       priceString = priceString.split("-")[0].trim();
     }
 
-    const finalPrice = parseFloat(priceString).toFixed(2);
+    const usdPrice = parseFloat(priceString);
+    const ilsPrice = (usdPrice * USD_TO_ILS).toFixed(2);
 
-    const translatedTitle = await translateToHebrew(
-      selectedProduct.product_title
-    );
+    const translatedTitle =
+      await translateToHebrew(selectedProduct.product_title);
+
+    const description =
+      buildDescription(translatedTitle, ilsPrice);
 
     const message = {
       text: `${selectedProduct.product_main_image_url}
 
-🔥 דיל חדש במיוחד!
+${description}
 
-📦 ${translatedTitle}
-
-💰 מחיר: ${finalPrice} ₪
 🛒 להזמנה:
 ${affiliateLink}`,
       author: "Deals Bot",
@@ -258,7 +298,7 @@ ${affiliateLink}`,
     await sendToChannel(message);
 
   } catch (err) {
-    console.log("❌ שגיאה כללית:");
+    console.log("❌ שגיאה:");
     console.log(err.response?.data || err.message);
   }
 }
