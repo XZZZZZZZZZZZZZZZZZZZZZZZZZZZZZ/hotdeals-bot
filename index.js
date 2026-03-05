@@ -5,10 +5,7 @@ const crypto = require("crypto");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-
-/* =========================
-   משתנים
-========================= */
+/* משתנים מהשרת */
 
 const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
@@ -17,18 +14,10 @@ const TRACKING_ID = process.env.ALI_TRACKING_ID;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const CLICKGO_WEBHOOK = process.env.CLICKGO_WEBHOOK;
 
-
-/* =========================
-   הגדרות מחיר
-========================= */
+/* הגדרות */
 
 const MAX_PRICE_ILS = 200;
 const USD_TO_ILS = 3.7;
-
-
-/* =========================
-   מילות חיפוש
-========================= */
 
 const KEYWORDS = [
   "bluetooth",
@@ -39,10 +28,7 @@ const KEYWORDS = [
   "phone holder"
 ];
 
-
-/* =========================
-   חתימה AliExpress
-========================= */
+/* חתימה */
 
 function sign(params) {
 
@@ -61,13 +47,9 @@ function sign(params) {
     .update(base)
     .digest("hex")
     .toUpperCase();
-
 }
 
-
-/* =========================
-   AI כותב תיאור
-========================= */
+/* AI */
 
 async function generateText(title, price, link) {
 
@@ -78,7 +60,7 @@ async function generateText(title, price, link) {
       messages: [
         {
           role: "system",
-          content: "אתה כותב הודעות דילים קצרות ומושכות בעברית."
+          content: "אתה כותב הודעות דילים קצרות בעברית."
         },
         {
           role: "user",
@@ -92,10 +74,8 @@ ${price}
 קישור:
 ${link}
 
-תסדר כותרת קצרה ונורמלית בעברית.
-תכתוב תיאור קצר 2 שורות.
+תסדר כותרת קצרה בעברית ותכתוב תיאור קצר.
 אל תשנה את המחיר.
-החזר הודעה מוכנה לפרסום.
 `
         }
       ]
@@ -109,13 +89,9 @@ ${link}
   );
 
   return response.data.choices[0].message.content;
-
 }
 
-
-/* =========================
-   משיכת מוצר
-========================= */
+/* שליפת מוצר */
 
 async function getProduct() {
 
@@ -150,7 +126,7 @@ async function getProduct() {
   const data = res.data;
 
   if (data.error_response) {
-    console.log("❌ API error", data.error_response);
+    console.log("API ERROR", data.error_response);
     return null;
   }
 
@@ -160,38 +136,23 @@ async function getProduct() {
 
   if (!products) return null;
 
-
-  /* =========================
-     סינון לפי מחיר
-  ========================= */
-
   for (let product of products) {
 
     const priceUSD = parseFloat(product.target_sale_price);
     const priceILS = priceUSD * USD_TO_ILS;
 
     if (priceILS <= MAX_PRICE_ILS) {
-
-      console.log("💰 מוצר מתאים:", priceILS, "₪");
-
       return product;
-
     }
 
   }
 
-  console.log("❌ אין מוצר מתחת ל200₪");
-
   return null;
-
 }
 
+/* פרסום */
 
-/* =========================
-   פרסום
-========================= */
-
-async function publishDeal(product) {
+async function publish(product) {
 
   const title = product.product_title;
   const priceUSD = product.target_sale_price;
@@ -212,14 +173,10 @@ ${text}`;
     text: message
   });
 
-  console.log("✅ נשלח לערוץ");
-
+  console.log("נשלח דיל");
 }
 
-
-/* =========================
-   הרצת הבוט
-========================= */
+/* ריצה */
 
 async function runBot() {
 
@@ -227,58 +184,44 @@ async function runBot() {
 
     const product = await getProduct();
 
-    if (!product) return;
+    if (!product) {
+      console.log("לא נמצא מוצר מתאים");
+      return;
+    }
 
-    await publishDeal(product);
+    await publish(product);
 
   } catch (err) {
 
-    console.log("❌ שגיאה:", err.message);
+    console.log("שגיאה:", err.message);
 
   }
 
 }
 
-
-/* =========================
-   שרת
-========================= */
+/* שרת */
 
 app.get("/", (req, res) => {
-
-  res.send("🤖 bot running");
-
+  res.send("bot running");
 });
-
 
 app.get("/run", async (req, res) => {
-
   await runBot();
-
   res.send("done");
-
 });
 
+/* ריצה מידית */
 
-/* =========================
-   כל 20 דקות
-========================= */
+runBot();
+
+/* כל 20 דקות */
 
 setInterval(() => {
-
-  console.log("⏰ מחפש דיל חדש...");
-
   runBot();
-
 }, 20 * 60 * 1000);
 
-
-/* =========================
-   הפעלת שרת
-========================= */
+/* הפעלת שרת */
 
 app.listen(PORT, () => {
-
-  console.log("🚀 server started");
-
+  console.log("server started");
 });
