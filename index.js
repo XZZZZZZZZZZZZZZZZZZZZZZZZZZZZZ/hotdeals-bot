@@ -5,183 +5,117 @@ const crypto = require("crypto");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-/* משתנים */
-
+// ===== משתנים מהשרת (Railway Variables) =====
 const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
 const TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-const CLICKGO_WEBHOOK = process.env.CLICKGO_WEBHOOK;
-
-/* הגדרות */
-
-const MAX_PRICE_ILS = 200;
-const USD_TO_ILS = 3.7;
-
+// ===== מילות מפתח =====
 const KEYWORDS = [
-  "bluetooth",
+  "phone",
   "gadget",
-  "headphones",
-  "smart watch",
   "kitchen",
-  "phone holder"
+  "electronics"
 ];
 
-/* חתימה */
-
+// ===== פונקציית חתימה תקינה ל-AliExpress =====
 function sign(params) {
+  const sortedKeys = Object.keys(params).sort();
+  let baseString = APP_SECRET;
 
-  const sorted = Object.keys(params).sort();
-
-  let base = APP_SECRET;
-
-  sorted.forEach(key => {
-    base += key + params[key];
+  sortedKeys.forEach(key => {
+    baseString += key + params[key];
   });
 
-  base += APP_SECRET;
+  baseString += APP_SECRET;
 
   return crypto
     .createHash("sha256")
-    .update(base)
+    .update(baseString)
     .digest("hex")
     .toUpperCase();
 }
 
-/* שליפת מוצר */
-
-async function getProduct() {
-
-  const keyword =
-    KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
-
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[-:TZ.]/g, "")
-    .slice(0, 14);
-
-  const params = {
-    method: "aliexpress.affiliate.product.query",
-    app_key: APP_KEY,
-    timestamp: timestamp,
-    format: "json",
-    v: "2.0",
-    sign_method: "sha256",
-    keywords: keyword,
-    page_no: 1,
-    page_size: 10,
-    tracking_id: TRACKING_ID
-  };
-
-  params.sign = sign(params);
-
-  const res = await axios.get(
-    "https://api-sg.aliexpress.com/sync",
-    { params }
-  );
-
-  const data = res.data;
-
-  if (data.error_response) {
-    console.log("API ERROR", data.error_response);
-    return null;
-  }
-
-  const products =
-    data.aliexpress_affiliate_product_query_response
-      ?.resp_result?.result?.products;
-
-  if (!products) return null;
-
-  for (let product of products) {
-
-    const priceUSD = parseFloat(product.target_sale_price);
-    const priceILS = priceUSD * USD_TO_ILS;
-
-    if (priceILS <= MAX_PRICE_ILS) {
-      return product;
-    }
-
-  }
-
-  return null;
-}
-
-/* פרסום */
-
-async function publish(product) {
-
-  const title = product.product_title;
-  const priceUSD = parseFloat(product.target_sale_price);
-  const priceILS = (priceUSD * USD_TO_ILS).toFixed(2);
-
-  const link =
-    product.promotion_link ||
-    product.product_detail_url;
-
-  const image = product.product_main_image_url;
-
-  const message = `🔥 דיל חדש
-
-${title}
-
-💰 מחיר: ${priceILS}₪
-
-${image}
-
-🔗 ${link}`;
-
-  await axios.post(CLICKGO_WEBHOOK, {
-    text: message
-  });
-
-  console.log("נשלח דיל");
-}
-
-/* ריצה */
-
-async function runBot() {
-
+// ===== קריאה ל-AliExpress =====
+async function fetchProducts() {
   try {
+    const keyword =
+      KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
 
-    const product = await getProduct();
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[-:TZ.]/g, "")
+      .slice(0, 14);
 
-    if (!product) {
-      console.log("לא נמצא מוצר מתאים");
+    const params = {
+      method: "aliexpress.affiliate.product.query",
+      app_key: APP_KEY,
+      timestamp: timestamp,
+      format: "json",
+      v: "2.0",
+      sign_method: "sha256",
+      keywords: keyword,
+      page_no: 1,
+      page_size: 5,
+      tracking_id: TRACKING_ID
+    };
+
+    params.sign = sign(params);
+
+    console.log("🔎 מחפש מוצרים עבור:", keyword);
+
+    const response = await axios.get(
+      "https://api-sg.aliexpress.com/sync",
+      { params }
+    );
+
+    const data = response.data;
+
+    if (data.error_response) {
+      console.log("❌ שגיאת API:");
+      console.log(data.error_response);
       return;
     }
 
-    await publish(product);
+    const products =
+      data.aliexpress_affiliate_product_query_response
+        ?.resp_result?.result?.products;
+
+    if (!products || products.length === 0) {
+      console.log("❌ אין מוצרים");
+      return;
+    }
+
+    const product = products[0];
+
+    console.log("✅ מוצר נמצא:");
+    console.log(product.product_title);
+    console.log(product.promotion_link);
 
   } catch (err) {
-
-    console.log("שגיאה:", err.message);
-
+    console.log("❌ שגיאה כללית:");
+    console.log(err.message);
   }
-
 }
 
-/* שרת */
-
+// ===== בדיקת שרת =====
 app.get("/", (req, res) => {
-  res.send("bot running");
+  res.send("🚀 הבוט מחובר ועובד");
 });
 
+// ===== הרצה ידנית =====
 app.get("/run", async (req, res) => {
-  await runBot();
-  res.send("done");
+  await fetchProducts();
+  res.send("🔄 הופעלה בדיקה");
 });
 
-/* ריצה מידית */
-
-runBot();
-
-/* כל 20 דקות */
-
+// ===== הרצה אוטומטית כל 20 דקות =====
 setInterval(() => {
-  runBot();
+  console.log("⏰ הרצה אוטומטית...");
+  fetchProducts();
 }, 20 * 60 * 1000);
 
+// ===== הפעלת שרת =====
 app.listen(PORT, () => {
-  console.log("server started");
+  console.log("🚀 שרת פעיל על פורט", PORT);
 });
