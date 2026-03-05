@@ -11,7 +11,7 @@ const openai = new OpenAI({
 });
 
 // =================
-// AliExpress ENV
+// ENV
 // =================
 
 const APP_KEY = process.env.ALI_APP_KEY;
@@ -50,9 +50,9 @@ function getNextKeyword() {
   const KEYWORDS = [
     "smart watch",
     "bluetooth earbuds",
+    "phone accessories",
     "car accessories",
     "kitchen gadgets",
-    "phone accessories",
     "gaming gadgets"
   ];
 
@@ -69,7 +69,7 @@ function getNextKeyword() {
 }
 
 // =================
-// חתימת API
+// חתימה
 // =================
 
 function generateSign(params) {
@@ -105,10 +105,10 @@ function extractLowestPrice(product) {
 
   if (priceString.includes("-")) {
 
-    const parts =
-      priceString.split("-").map(p => parseFloat(p.trim()));
+    const prices =
+      priceString.split("-").map(p => parseFloat(p));
 
-    return Math.min(...parts);
+    return Math.min(...prices);
   }
 
   return parseFloat(priceString);
@@ -156,7 +156,9 @@ async function generateMarketingText(title, price) {
   try {
 
     const prompt = `
-כתוב פוסט דילים בעברית בסגנון ערוץ דילים.
+כתוב פוסט דילים בעברית בלבד.
+
+אסור להשתמש באנגלית.
 
 שם המוצר:
 ${title}
@@ -164,16 +166,15 @@ ${title}
 מחיר:
 ₪${price}
 
-מבנה הפוסט:
+מבנה:
 
 כותרת עם אימוג'י
 תיאור קצר
-4-5 יתרונות עם אימוג'י
-משפט מכירה
+4 יתרונות עם אימוג'י
+משפט מכירה קצר
 שורת מחיר
 
-בסגנון שיווקי מושך.
-החזר טקסט בלבד.
+הטקסט חייב להיות בעברית בלבד.
 `;
 
     const completion =
@@ -185,7 +186,7 @@ ${title}
           { role: "user", content: prompt }
         ],
 
-        temperature: 0.8
+        temperature: 0.9
       });
 
     return completion.choices[0].message.content;
@@ -194,18 +195,16 @@ ${title}
 
   catch {
 
-    return `🔥 דיל חדש הגיע!
+    return `🔥 דיל חדש!
 
 ${title}
 
-💰 מחיר: ₪${price}
-
-לחצו להזמנה לפני שייגמר!`;
+💰 מחיר: ₪${price}`;
   }
 }
 
 // =================
-// שליחה לערוץ
+// שליחה לצ'אט
 // =================
 
 async function sendToChannel(text) {
@@ -232,7 +231,7 @@ async function sendToChannel(text) {
 }
 
 // =================
-// חיפוש מוצר
+// חיפוש דיל
 // =================
 
 async function fetchDeal() {
@@ -311,12 +310,14 @@ async function fetchDeal() {
         finalPrice
       );
 
-    const messageText = `![תמונה](${selectedProduct.product_main_image_url})
+    const messageText = `
+🖼 ${selectedProduct.product_main_image_url}
 
 ${marketingText}
 
-🛒 להזמנה:
-${affiliateLink}`;
+🛒 להזמנה
+${affiliateLink}
+`;
 
     await sendToChannel(messageText);
 
@@ -330,7 +331,7 @@ ${affiliateLink}`;
 }
 
 // =================
-// לוח זמנים
+// מערכת שעות
 // =================
 
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
