@@ -6,37 +6,32 @@ const cron = require("node-cron");
 const fs = require("fs");
 const OpenAI = require("openai");
 
-// ======================
-// OPENAI
-// ======================
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// ======================
-// ENV
-// ======================
+// =================
+// AliExpress ENV
+// =================
 
 const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
 const TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-// ======================
+// =================
 // ClickAndGo
-// ======================
+// =================
 
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
 console.log("🚂 Deals Bot Started");
 
-// ======================
+// =================
 // מניעת כפילויות
-// ======================
+// =================
 
 const SENT_FILE = "sent_products.json";
-
 let sentProducts = new Set();
 
 if (fs.existsSync(SENT_FILE)) {
@@ -44,9 +39,9 @@ if (fs.existsSync(SENT_FILE)) {
   sentProducts = new Set(data);
 }
 
-// ======================
-// רוטציית מילות מפתח
-// ======================
+// =================
+// מילות מפתח
+// =================
 
 let lastKeyword = null;
 
@@ -56,9 +51,9 @@ function getNextKeyword() {
     "smart watch",
     "bluetooth earbuds",
     "car accessories",
-    "gaming gadgets",
     "kitchen gadgets",
-    "phone accessories"
+    "phone accessories",
+    "gaming gadgets"
   ];
 
   let selected;
@@ -66,16 +61,16 @@ function getNextKeyword() {
   do {
     selected =
       KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
-  } while (selected === lastKeyword && KEYWORDS.length > 1);
+  } while (selected === lastKeyword);
 
   lastKeyword = selected;
 
   return selected;
 }
 
-// ======================
-// חתימה
-// ======================
+// =================
+// חתימת API
+// =================
 
 function generateSign(params) {
 
@@ -96,9 +91,9 @@ function generateSign(params) {
     .toUpperCase();
 }
 
-// ======================
-// חילוץ מחיר
-// ======================
+// =================
+// מחיר
+// =================
 
 function extractLowestPrice(product) {
 
@@ -119,13 +114,14 @@ function extractLowestPrice(product) {
   return parseFloat(priceString);
 }
 
-// ======================
-// יצירת קישור שותפים
-// ======================
+// =================
+// קישור שותפים
+// =================
 
 async function generateAffiliateLink(originalUrl) {
 
   const params = {
+
     app_key: APP_KEY,
     method: "aliexpress.affiliate.link.generate",
     timestamp: Date.now(),
@@ -151,71 +147,93 @@ async function generateAffiliateLink(originalUrl) {
     ?.promotion_link || null;
 }
 
-// ======================
-// AI כותרת ותיאור
-// ======================
+// =================
+// AI תיאור
+// =================
 
-async function generateAITitleAndDescription(title, price) {
+async function generateMarketingText(title, price) {
 
-  const prompt = `
-כתוב הודעת דילים בעברית.
+  try {
 
-שם מוצר:
+    const prompt = `
+כתוב פוסט דילים בעברית בסגנון ערוץ דילים.
+
+שם המוצר:
 ${title}
 
 מחיר:
 ₪${price}
 
-כתוב:
-כותרת שיווקית קצרה
-ותיאור עם 3-4 יתרונות.
+מבנה הפוסט:
 
-תחזיר JSON בלבד:
+כותרת עם אימוג'י
+תיאור קצר
+4-5 יתרונות עם אימוג'י
+משפט מכירה
+שורת מחיר
 
-{
-"title": "",
-"description": ""
-}
+בסגנון שיווקי מושך.
+החזר טקסט בלבד.
 `;
 
-  const completion =
-    await openai.chat.completions.create({
+    const completion =
+      await openai.chat.completions.create({
 
-      model: "gpt-4o-mini",
+        model: "gpt-4o-mini",
 
-      messages: [
-        { role: "user", content: prompt }
-      ],
+        messages: [
+          { role: "user", content: prompt }
+        ],
 
-      temperature: 0.8
-    });
+        temperature: 0.8
+      });
 
-  const text = completion.choices[0].message.content;
+    return completion.choices[0].message.content;
 
-  return JSON.parse(text);
+  }
+
+  catch {
+
+    return `🔥 דיל חדש הגיע!
+
+${title}
+
+💰 מחיר: ₪${price}
+
+לחצו להזמנה לפני שייגמר!`;
+  }
 }
 
-// ======================
-// שליחה לצ'אט
-// ======================
+// =================
+// שליחה לערוץ
+// =================
 
-async function sendToChannel(message) {
+async function sendToChannel(text) {
 
-  await axios.post(CHANNEL_API_URL, message, {
+  await axios.post(
 
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": API_KEY
+    CHANNEL_API_URL,
+
+    {
+      text: text,
+      author: "Deals Bot",
+      timestamp: new Date().toISOString()
+    },
+
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": API_KEY
+      }
     }
-
-  });
+  );
 
   console.log("✅ נשלח לצ'אט");
 }
 
-// ======================
-// שליפת דיל
-// ======================
+// =================
+// חיפוש מוצר
+// =================
 
 async function fetchDeal() {
 
@@ -231,7 +249,6 @@ async function fetchDeal() {
     sign_method: "md5",
     keywords: getNextKeyword(),
     tracking_id: TRACKING_ID,
-
     ship_to_country: "IL",
     target_currency: "ILS"
   };
@@ -262,8 +279,7 @@ async function fetchDeal() {
 
       const price = extractLowestPrice(product);
 
-      // סינון עד 200 שקל
-      if (!price || price <= 0 || price > 200) continue;
+      if (!price || price > 200) continue;
 
       const link =
         await generateAffiliateLink(product.product_detail_url);
@@ -289,45 +305,33 @@ async function fetchDeal() {
     const finalPrice =
       extractLowestPrice(selectedProduct).toFixed(2);
 
-    const aiText =
-      await generateAITitleAndDescription(
+    const marketingText =
+      await generateMarketingText(
         selectedProduct.product_title,
         finalPrice
       );
 
-    const message = {
+    const messageText = `![תמונה](${selectedProduct.product_main_image_url})
 
-      text: `${selectedProduct.product_main_image_url}
-
-${aiText.title}
-
-${aiText.description}
-
-💰 ₪${finalPrice}
+${marketingText}
 
 🛒 להזמנה:
-${affiliateLink}`,
+${affiliateLink}`;
 
-      author: "Deals Bot",
-
-      timestamp: new Date().toISOString()
-    };
-
-    await sendToChannel(message);
+    await sendToChannel(messageText);
 
   }
 
   catch (err) {
 
     console.log("❌ שגיאה:");
-
     console.log(err.response?.data || err.message);
   }
 }
 
-// ======================
+// =================
 // לוח זמנים
-// ======================
+// =================
 
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
 cron.schedule("*/20 8-14 * * 5", fetchDeal);
