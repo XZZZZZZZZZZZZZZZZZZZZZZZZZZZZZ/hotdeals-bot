@@ -131,7 +131,7 @@ function extractLowestPrice(product){
 }
 
 // =================
-// תרגום עברית
+// תרגום לעברית
 // =================
 
 async function translateTitle(title){
@@ -235,7 +235,7 @@ ${title}
 מבנה:
 
 כותרת
-שורה קצרה
+תיאור קצר
 4 יתרונות
 שורת מחיר
 `;
@@ -415,16 +415,12 @@ async function fetchDeal(){
     finalPrice
     );
 
-    const messageText = `
-
-${selectedProduct.product_main_image_url}
+    const messageText = `[🖼 תמונה](${selectedProduct.product_main_image_url})
 
 ${marketingText}
 
 🛒 להזמנה:
-${affiliateLink}
-
-`;
+${affiliateLink}`;
 
     await sendToChannel(messageText);
 
