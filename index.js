@@ -4,14 +4,21 @@ const axios = require("axios");
 const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
-const OpenAI = require("openai");
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+let openai = null;
+
+if (process.env.OPENAI_API_KEY) {
+
+  const OpenAI = require("openai");
+
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  });
+
+}
 
 // =================
-// ENV
+// AliExpress ENV
 // =================
 
 const APP_KEY = process.env.ALI_APP_KEY;
@@ -22,7 +29,9 @@ const TRACKING_ID = process.env.ALI_TRACKING_ID;
 // ClickAndGo
 // =================
 
-const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
+const CHANNEL_API_URL =
+"https://dilim.clickandgo.cfd/api/import/post";
+
 const API_KEY = "987654321";
 
 console.log("🚂 Deals Bot Started");
@@ -32,10 +41,15 @@ console.log("🚂 Deals Bot Started");
 // =================
 
 const SENT_FILE = "sent_products.json";
+
 let sentProducts = new Set();
 
 if (fs.existsSync(SENT_FILE)) {
-  const data = JSON.parse(fs.readFileSync(SENT_FILE));
+
+  const data = JSON.parse(
+    fs.readFileSync(SENT_FILE)
+  );
+
   sentProducts = new Set(data);
 }
 
@@ -48,19 +62,25 @@ let lastKeyword = null;
 function getNextKeyword() {
 
   const KEYWORDS = [
+
     "smart watch",
     "bluetooth earbuds",
     "phone accessories",
     "car accessories",
     "kitchen gadgets",
     "gaming gadgets"
+
   ];
 
   let selected;
 
   do {
+
     selected =
-      KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
+      KEYWORDS[Math.floor(
+        Math.random() * KEYWORDS.length
+      )];
+
   } while (selected === lastKeyword);
 
   lastKeyword = selected;
@@ -69,17 +89,20 @@ function getNextKeyword() {
 }
 
 // =================
-// חתימה
+// חתימת API
 // =================
 
 function generateSign(params) {
 
-  const sorted = Object.keys(params).sort();
+  const sorted =
+    Object.keys(params).sort();
 
   let base = APP_SECRET;
 
   sorted.forEach(key => {
+
     base += key + params[key];
+
   });
 
   base += APP_SECRET;
@@ -92,7 +115,7 @@ function generateSign(params) {
 }
 
 // =================
-// מחיר
+// מחיר אמיתי
 // =================
 
 function extractLowestPrice(product) {
@@ -100,15 +123,17 @@ function extractLowestPrice(product) {
   let priceString =
     product.target_app_sale_price ||
     product.app_sale_price ||
+    product.sale_price ||
     product.original_price ||
     "0";
 
+  priceString = priceString.toString();
+
   if (priceString.includes("-")) {
 
-    const prices =
-      priceString.split("-").map(p => parseFloat(p));
+    priceString =
+      priceString.split("-")[0];
 
-    return Math.min(...prices);
   }
 
   return parseFloat(priceString);
@@ -131,13 +156,16 @@ async function generateAffiliateLink(originalUrl) {
     source_values: originalUrl,
     tracking_id: TRACKING_ID,
     promotion_link_type: 0
+
   };
 
   params.sign = generateSign(params);
 
   const response = await axios.get(
+
     "https://api-sg.aliexpress.com/sync",
     { params }
+
   );
 
   return response.data
@@ -153,14 +181,24 @@ async function generateAffiliateLink(originalUrl) {
 
 async function generateMarketingText(title, price) {
 
+  if (!openai) {
+
+    return `🔥 דיל חדש!
+
+${title}
+
+💰 מחיר: ₪${price}`;
+
+  }
+
   try {
 
     const prompt = `
 כתוב פוסט דילים בעברית בלבד.
 
-אסור להשתמש באנגלית.
+אין להשתמש באנגלית.
 
-שם המוצר:
+שם מוצר:
 ${title}
 
 מחיר:
@@ -171,10 +209,8 @@ ${title}
 כותרת עם אימוג'י
 תיאור קצר
 4 יתרונות עם אימוג'י
-משפט מכירה קצר
+משפט מכירה
 שורת מחיר
-
-הטקסט חייב להיות בעברית בלבד.
 `;
 
     const completion =
@@ -187,9 +223,13 @@ ${title}
         ],
 
         temperature: 0.9
+
       });
 
-    return completion.choices[0].message.content;
+    return completion
+      .choices[0]
+      .message
+      .content;
 
   }
 
@@ -204,7 +244,7 @@ ${title}
 }
 
 // =================
-// שליחה לצ'אט
+// שליחה לערוץ
 // =================
 
 async function sendToChannel(text) {
@@ -214,17 +254,24 @@ async function sendToChannel(text) {
     CHANNEL_API_URL,
 
     {
+
       text: text,
       author: "Deals Bot",
       timestamp: new Date().toISOString()
+
     },
 
     {
+
       headers: {
+
         "Content-Type": "application/json",
         "X-API-Key": API_KEY
+
       }
+
     }
+
   );
 
   console.log("✅ נשלח לצ'אט");
@@ -241,15 +288,18 @@ async function fetchDeal() {
   const params = {
 
     app_key: APP_KEY,
-    method: "aliexpress.affiliate.product.query",
+    method:
+    "aliexpress.affiliate.product.query",
     timestamp: Date.now(),
     format: "json",
     v: "2.0",
     sign_method: "md5",
     keywords: getNextKeyword(),
     tracking_id: TRACKING_ID,
+
     ship_to_country: "IL",
     target_currency: "ILS"
+
   };
 
   params.sign = generateSign(params);
@@ -258,14 +308,19 @@ async function fetchDeal() {
 
     const response =
       await axios.get(
+
         "https://api-sg.aliexpress.com/sync",
         { params }
+
       );
 
     const products =
       response.data
       ?.aliexpress_affiliate_product_query_response
-      ?.resp_result?.result?.products?.product;
+      ?.resp_result
+      ?.result
+      ?.products
+      ?.product;
 
     if (!products?.length) return;
 
@@ -274,50 +329,66 @@ async function fetchDeal() {
 
     for (const product of products) {
 
-      if (sentProducts.has(product.product_id)) continue;
+      if (sentProducts.has(
+        product.product_id
+      )) continue;
 
-      const price = extractLowestPrice(product);
+      const price =
+        extractLowestPrice(product);
 
-      if (!price || price > 200) continue;
+      if (!price || price > 200)
+      continue;
 
       const link =
-        await generateAffiliateLink(product.product_detail_url);
+        await generateAffiliateLink(
+          product.product_detail_url
+        );
 
       if (link) {
 
         selectedProduct = product;
         affiliateLink = link;
 
-        sentProducts.add(product.product_id);
+        sentProducts.add(
+          product.product_id
+        );
 
         fs.writeFileSync(
+
           SENT_FILE,
-          JSON.stringify([...sentProducts])
+
+          JSON.stringify(
+            [...sentProducts]
+          )
+
         );
 
         break;
       }
     }
 
-    if (!selectedProduct || !affiliateLink) return;
+    if (!selectedProduct
+      || !affiliateLink) return;
 
     const finalPrice =
-      extractLowestPrice(selectedProduct).toFixed(2);
+      extractLowestPrice(
+        selectedProduct
+      ).toFixed(2);
 
     const marketingText =
       await generateMarketingText(
+
         selectedProduct.product_title,
         finalPrice
+
       );
 
-    const messageText = `
-🖼 ${selectedProduct.product_main_image_url}
+    const messageText = `![תמונה](${selectedProduct.product_main_image_url})
 
 ${marketingText}
 
-🛒 להזמנה
-${affiliateLink}
-`;
+🛒 להזמנה:
+${affiliateLink}`;
 
     await sendToChannel(messageText);
 
@@ -326,7 +397,12 @@ ${affiliateLink}
   catch (err) {
 
     console.log("❌ שגיאה:");
-    console.log(err.response?.data || err.message);
+
+    console.log(
+      err.response?.data
+      || err.message
+    );
+
   }
 }
 
@@ -334,10 +410,25 @@ ${affiliateLink}
 // מערכת שעות
 // =================
 
-cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
-cron.schedule("*/20 8-14 * * 5", fetchDeal);
-cron.schedule("*/20 22-23 * * 6", fetchDeal);
-cron.schedule("*/20 0-1 * * 0", fetchDeal);
+cron.schedule(
+"*/20 8-23 * * 0-4",
+fetchDeal
+);
+
+cron.schedule(
+"*/20 8-14 * * 5",
+fetchDeal
+);
+
+cron.schedule(
+"*/20 22-23 * * 6",
+fetchDeal
+);
+
+cron.schedule(
+"*/20 0-1 * * 0",
+fetchDeal
+);
 
 fetchDeal();
 
