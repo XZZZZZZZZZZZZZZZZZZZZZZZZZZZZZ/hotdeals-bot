@@ -1,70 +1,53 @@
-process.env.TZ = "Asia/Jerusalem";
-
+const express = require("express");
 const axios = require("axios");
 const crypto = require("crypto");
-const cron = require("node-cron");
 
-// ======================
-// 🔐 ENV
-// ======================
+const app = express();
+const PORT = process.env.PORT || 8080;
+
+
+/* =========================
+   משתנים
+========================= */
 
 const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
 const TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-if (!APP_KEY || !APP_SECRET || !TRACKING_ID) {
-  console.log("❌ חסרים מפתחות AliExpress");
-  process.exit(1);
-}
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const CLICKGO_WEBHOOK = process.env.CLICKGO_WEBHOOK;
 
-// ======================
-// 🎯 ClickAndGo
-// ======================
 
-const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
-const API_KEY = "987654321";
+/* =========================
+   הגדרות מחיר
+========================= */
 
-console.log("✅ Affiliate Bot Started (IL Mode)");
+const MAX_PRICE_ILS = 200;
+const USD_TO_ILS = 3.7;
 
-// ======================
-// 🔁 רוטציית מילות מפתח
-// ======================
 
-let lastKeyword = null;
+/* =========================
+   מילות חיפוש
+========================= */
 
-function getNextKeyword() {
+const KEYWORDS = [
+  "bluetooth",
+  "gadget",
+  "headphones",
+  "smart watch",
+  "kitchen",
+  "phone holder"
+];
 
-  const KEYWORDS = [
-    "smart watch",
-    "bluetooth earbuds",
-    "car accessories",
-    "gaming gadgets",
-    "kitchen tools",
-    "phone accessories"
-  ];
 
-  let selected;
+/* =========================
+   חתימה AliExpress
+========================= */
 
-  do {
-    selected = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
-  } while (selected === lastKeyword && KEYWORDS.length > 1);
+function sign(params) {
 
-  lastKeyword = selected;
-  return selected;
-}
-
-// ======================
-// 🚫 מניעת כפילויות
-// ======================
-
-const sentProducts = new Set();
-
-// ======================
-// 🔐 חתימה
-// ======================
-
-function generateSign(params) {
   const sorted = Object.keys(params).sort();
+
   let base = APP_SECRET;
 
   sorted.forEach(key => {
@@ -74,260 +57,228 @@ function generateSign(params) {
   base += APP_SECRET;
 
   return crypto
-    .createHash("md5")
+    .createHash("sha256")
     .update(base)
     .digest("hex")
     .toUpperCase();
+
 }
 
-// ======================
-// 🌍 תרגום
-// ======================
 
-async function translateToHebrew(text) {
-  try {
-    const res = await axios.get(
-      "https://translate.googleapis.com/translate_a/single",
-      {
-        params: {
-          client: "gtx",
-          sl: "auto",
-          tl: "he",
-          dt: "t",
-          q: text
+/* =========================
+   AI כותב תיאור
+========================= */
+
+async function generateText(title, price, link) {
+
+  const response = await axios.post(
+    "https://api.openai.com/v1/chat/completions",
+    {
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "אתה כותב הודעות דילים קצרות ומושכות בעברית."
+        },
+        {
+          role: "user",
+          content: `
+שם מוצר:
+${title}
+
+מחיר:
+${price}
+
+קישור:
+${link}
+
+תסדר כותרת קצרה ונורמלית בעברית.
+תכתוב תיאור קצר 2 שורות.
+אל תשנה את המחיר.
+החזר הודעה מוכנה לפרסום.
+`
         }
+      ]
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
       }
-    );
-    return res.data[0].map(t => t[0]).join("");
-  } catch {
-    return text;
-  }
+    }
+  );
+
+  return response.data.choices[0].message.content;
+
 }
 
-// ======================
-// 💰 חילוץ מחיר מינימלי
-// ======================
 
-function extractLowestPrice(product) {
+/* =========================
+   משיכת מוצר
+========================= */
 
-  let priceString =
-    product.target_app_sale_price ||
-    product.app_sale_price ||
-    product.original_price ||
-    "0";
+async function getProduct() {
 
-  if (priceString.includes("-")) {
-    const parts = priceString
-      .split("-")
-      .map(p => parseFloat(p.trim()));
-    return Math.min(...parts);
-  }
+  const keyword =
+    KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
 
-  return parseFloat(priceString);
-}
-
-// ======================
-// 🔗 יצירת קישור שותפים
-// ======================
-
-async function generateAffiliateLink(originalUrl) {
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[-:TZ.]/g, "")
+    .slice(0, 14);
 
   const params = {
+    method: "aliexpress.affiliate.product.query",
     app_key: APP_KEY,
-    method: "aliexpress.affiliate.link.generate",
-    timestamp: Date.now(),
+    timestamp: timestamp,
     format: "json",
     v: "2.0",
-    sign_method: "md5",
-    source_values: originalUrl,
-    tracking_id: TRACKING_ID,
-    promotion_link_type: 0
+    sign_method: "sha256",
+    keywords: keyword,
+    page_no: 1,
+    page_size: 10,
+    tracking_id: TRACKING_ID
   };
 
-  params.sign = generateSign(params);
+  params.sign = sign(params);
 
-  const response = await axios.get(
+  const res = await axios.get(
     "https://api-sg.aliexpress.com/sync",
     { params }
   );
 
-  return response.data
-    ?.aliexpress_affiliate_link_generate_response
-    ?.resp_result?.result?.promotion_links?.promotion_link?.[0]
-    ?.promotion_link || null;
-}
+  const data = res.data;
 
-// ======================
-// 🧠 מערכת קופירייטינג רמה 3
-// ======================
+  if (data.error_response) {
+    console.log("❌ API error", data.error_response);
+    return null;
+  }
 
-function randomFrom(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+  const products =
+    data.aliexpress_affiliate_product_query_response
+      ?.resp_result?.result?.products;
 
-function shuffle(array) {
-  return array.sort(() => 0.5 - Math.random());
-}
+  if (!products) return null;
 
-function buildMarketingText(title, price) {
 
-  const intros = [
-    `נמאס להתפשר? ${title} זה בדיוק מה שחיפשת.`,
-    `יש מוצרים רגילים… ויש את ${title}.`,
-    `אם אתה אוהב איכות – ${title} הולך להרשים.`,
-    `זה מסוג המוצרים שאומרים עליהם: למה לא קניתי קודם?`,
-    `שדרוג קטן – הבדל ענק. ${title}.`,
-    `לא עוד פתרון בינוני – ${title} משנה את המשחק.`,
-    `ככה מקצוענים עובדים – ${title}.`
-  ];
+  /* =========================
+     סינון לפי מחיר
+  ========================= */
 
-  const featurePool = [
-    "בנייה איכותית ועמידה לאורך זמן",
-    "עיצוב חכם שחוסך מקום",
-    "נוחות שימוש מקסימלית",
-    "מתאים לבית ולעבודה מקצועית",
-    "פתרון פרקטי לשימוש יומיומי",
-    "קומפקטי אבל עוצמתי",
-    "שליטה מלאה בלי בלגן",
-    "עמיד לשימוש אינטנסיבי",
-    "משדרג את חוויית העבודה",
-    "קל לתפעול כבר מהרגע הראשון"
-  ];
+  for (let product of products) {
 
-  const urgency = [
-    "המלאי לא נשאר לנצח.",
-    "במחיר כזה זה לא מחכה הרבה.",
-    "מי שתופס – מרוויח.",
-    "אל תחכה שהמחיר יעלה.",
-    "הזדמנות שלא רואים כל יום."
-  ];
+    const priceUSD = parseFloat(product.target_sale_price);
+    const priceILS = priceUSD * USD_TO_ILS;
 
-  const selectedFeatures = shuffle(featurePool).slice(0, 4);
+    if (priceILS <= MAX_PRICE_ILS) {
 
-  const bullets = selectedFeatures
-    .map(f => `✔ ${f}`)
-    .join("\n");
+      console.log("💰 מוצר מתאים:", priceILS, "₪");
 
-  return `${randomFrom(intros)}
+      return product;
 
-${bullets}
-
-💰 עכשיו רק ב־₪${price}
-
-${randomFrom(urgency)}`;
-}
-
-// ======================
-// 🚀 שליחה לצ'אט
-// ======================
-
-async function sendToChannel(message) {
-
-  await axios.post(CHANNEL_API_URL, message, {
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": API_KEY
     }
+
+  }
+
+  console.log("❌ אין מוצר מתחת ל200₪");
+
+  return null;
+
+}
+
+
+/* =========================
+   פרסום
+========================= */
+
+async function publishDeal(product) {
+
+  const title = product.product_title;
+  const priceUSD = product.target_sale_price;
+  const priceILS = (priceUSD * USD_TO_ILS).toFixed(0);
+
+  const link = product.promotion_link;
+  const image = product.product_main_image_url;
+
+  const priceText = `${priceILS}₪`;
+
+  const text = await generateText(title, priceText, link);
+
+  const message = `[תמונה](${image})
+
+${text}`;
+
+  await axios.post(CLICKGO_WEBHOOK, {
+    text: message
   });
 
-  console.log("✅ נשלח לצ'אט");
+  console.log("✅ נשלח לערוץ");
+
 }
 
-// ======================
-// 🚂 שליפת דיל
-// ======================
 
-async function fetchDeal() {
+/* =========================
+   הרצת הבוט
+========================= */
 
-  console.log("🔎 מחפש דיל...");
-
-  const params = {
-    app_key: APP_KEY,
-    method: "aliexpress.affiliate.product.query",
-    timestamp: Date.now(),
-    format: "json",
-    v: "2.0",
-    sign_method: "md5",
-    keywords: getNextKeyword(),
-    tracking_id: TRACKING_ID,
-    ship_to_country: "IL",
-    target_currency: "ILS"
-  };
-
-  params.sign = generateSign(params);
+async function runBot() {
 
   try {
 
-    const response = await axios.get(
-      "https://api-sg.aliexpress.com/sync",
-      { params }
-    );
+    const product = await getProduct();
 
-    const products =
-      response.data?.aliexpress_affiliate_product_query_response
-        ?.resp_result?.result?.products?.product;
+    if (!product) return;
 
-    if (!products?.length) return;
-
-    let selectedProduct = null;
-    let affiliateLink = null;
-
-    for (const product of products) {
-
-      if (sentProducts.has(product.product_id)) continue;
-
-      const price = extractLowestPrice(product);
-      if (!price || price <= 0) continue;
-
-      const link =
-        await generateAffiliateLink(product.product_detail_url);
-
-      if (link) {
-        selectedProduct = product;
-        affiliateLink = link;
-        sentProducts.add(product.product_id);
-        break;
-      }
-    }
-
-    if (!selectedProduct || !affiliateLink) return;
-
-    const finalPrice =
-      Math.round(extractLowestPrice(selectedProduct));
-
-    const translatedTitle =
-      await translateToHebrew(selectedProduct.product_title);
-
-    const marketingText =
-      buildMarketingText(translatedTitle, finalPrice);
-
-    const message = {
-      text: `${selectedProduct.product_main_image_url}
-
-${marketingText}
-
-🛒 להזמנה:
-${affiliateLink}`,
-      author: "Deals Bot",
-      timestamp: new Date().toISOString()
-    };
-
-    await sendToChannel(message);
+    await publishDeal(product);
 
   } catch (err) {
-    console.log("❌ שגיאה:");
-    console.log(err.response?.data || err.message);
+
+    console.log("❌ שגיאה:", err.message);
+
   }
+
 }
 
-// ======================
-// ⏰ לוח זמנים
-// ======================
 
-cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
-cron.schedule("*/20 8-14 * * 5", fetchDeal);
-cron.schedule("*/20 22-23 * * 6", fetchDeal);
-cron.schedule("*/20 0-1 * * 0", fetchDeal);
+/* =========================
+   שרת
+========================= */
 
-fetchDeal();
-setInterval(() => {}, 1000);
+app.get("/", (req, res) => {
+
+  res.send("🤖 bot running");
+
+});
+
+
+app.get("/run", async (req, res) => {
+
+  await runBot();
+
+  res.send("done");
+
+});
+
+
+/* =========================
+   כל 20 דקות
+========================= */
+
+setInterval(() => {
+
+  console.log("⏰ מחפש דיל חדש...");
+
+  runBot();
+
+}, 20 * 60 * 1000);
+
+
+/* =========================
+   הפעלת שרת
+========================= */
+
+app.listen(PORT, () => {
+
+  console.log("🚀 server started");
+
+});
