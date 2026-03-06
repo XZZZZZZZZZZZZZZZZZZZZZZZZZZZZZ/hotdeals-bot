@@ -23,14 +23,7 @@ const CHANNEL_API_URL =
 
 const API_KEY = "987654321";
 
-console.log("🚂 Deals Bot Started");
-
-// =================
-// מניעת כפילויות
-// =================
-
 const SENT_FILE = "sent_products.json";
-
 let sentProducts = new Set();
 
 if (fs.existsSync(SENT_FILE)) {
@@ -38,42 +31,30 @@ if (fs.existsSync(SENT_FILE)) {
   sentProducts = new Set(data);
 }
 
-// =================
-// מילות מפתח
-// =================
-
 let lastKeyword = null;
 
 function getNextKeyword(){
 
   const KEYWORDS = [
-
     "smart watch",
     "bluetooth earbuds",
     "phone accessories",
     "car accessories",
     "kitchen gadgets",
     "gaming gadgets"
-
   ];
 
   let selected;
 
   do{
-
     selected =
     KEYWORDS[Math.floor(Math.random()*KEYWORDS.length)];
-
   }while(selected === lastKeyword);
 
   lastKeyword = selected;
 
   return selected;
 }
-
-// =================
-// חתימה
-// =================
 
 function generateSign(params){
 
@@ -94,10 +75,6 @@ function generateSign(params){
   .toUpperCase();
 }
 
-// =================
-// מחיר
-// =================
-
 function extractLowestPrice(product){
 
   let price =
@@ -114,10 +91,6 @@ function extractLowestPrice(product){
 
   return parseFloat(price);
 }
-
-// =================
-// תרגום
-// =================
 
 async function translateTitle(title){
 
@@ -141,16 +114,10 @@ async function translateTitle(title){
   }
 
   catch{
-
     return title;
-
   }
 
 }
-
-// =================
-// קישור שותפים
-// =================
 
 async function generateAffiliateLink(originalUrl){
 
@@ -164,7 +131,7 @@ async function generateAffiliateLink(originalUrl){
     sign_method:"md5",
     source_values:originalUrl,
     tracking_id:TRACKING_ID,
-    promotion_link_type:0
+    promotion_link_type:2
 
   };
 
@@ -186,10 +153,6 @@ async function generateAffiliateLink(originalUrl){
 
 }
 
-// =================
-// AI טקסט
-// =================
-
 async function generateMarketingText(title,price){
 
   if(!openai){
@@ -200,36 +163,27 @@ ${title}
 
 💰 מחיר: ₪${price}
 
-🛒 הזדמנות מצוינת במחיר משתלם!`;
+🛒 שווה לבדוק!`;
 
   }
 
   try{
 
     const prompt = `
-כתוב פוסט דילים בעברית בסגנון טבעי של קבוצת דילים.
-
-לא טכני ולא רשמי.
+כתוב פוסט דילים בעברית בסגנון שיווקי טבעי.
 
 מבנה:
 
-שורה ראשונה:
-שם מוצר עם אימוג'י.
+שם מוצר עם אימוג'י
+משפט קצר למה המוצר שימושי
+4 יתרונות
+משפט סיום
 
-שורה שנייה:
-משפט קצר למה המוצר שימושי.
-
-אחר כך:
-4 יתרונות עם אימוג'י.
-
-בסוף:
-משפט קצר שמעודד קנייה.
-
-המחיר חייב להיות בסוף בפורמט:
+מחיר בסוף:
 
 💥 המחיר: ₪${price} בלבד! 💥
 
-שם המוצר:
+שם מוצר:
 ${title}
 `;
 
@@ -256,17 +210,11 @@ ${title}
 
 ${title}
 
-💰 מחיר: ₪${price}
-
-🛒 הזדמנות מצוינת במחיר משתלם!`;
+💰 מחיר: ₪${price}`;
 
   }
 
 }
-
-// =================
-// שליחה לערוץ
-// =================
 
 async function sendToChannel(text){
 
@@ -289,17 +237,9 @@ async function sendToChannel(text){
 
   );
 
-  console.log("✅ נשלח לצ'אט");
-
 }
 
-// =================
-// חיפוש מוצר
-// =================
-
 async function fetchDeal(){
-
-  console.log("🔎 מחפש דיל...");
 
   const params = {
 
@@ -311,8 +251,10 @@ async function fetchDeal(){
     sign_method:"md5",
     keywords:getNextKeyword(),
     tracking_id:TRACKING_ID,
+
     ship_to_country:"IL",
-    target_currency:"ILS"
+    target_currency:"ILS",
+    target_language:"HE"
 
   };
 
@@ -398,19 +340,11 @@ ${affiliateLink}`;
 
   catch(err){
 
-    console.log("❌ שגיאה:");
-
-    console.log(
-      err.response?.data || err.message
-    );
+    console.log(err.response?.data || err.message);
 
   }
 
 }
-
-// =================
-// מערכת שעות
-// =================
 
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
 cron.schedule("*/20 8-14 * * 5", fetchDeal);
