@@ -24,6 +24,7 @@ const CHANNEL_API_URL =
 const API_KEY = "987654321";
 
 const SENT_FILE = "sent_products.json";
+
 let sentProducts = new Set();
 
 if (fs.existsSync(SENT_FILE)) {
@@ -36,19 +37,23 @@ let lastKeyword = null;
 function getNextKeyword(){
 
   const KEYWORDS = [
+
     "smart watch",
     "bluetooth earbuds",
     "phone accessories",
     "car accessories",
     "kitchen gadgets",
     "gaming gadgets"
+
   ];
 
   let selected;
 
   do{
+
     selected =
     KEYWORDS[Math.floor(Math.random()*KEYWORDS.length)];
+
   }while(selected === lastKeyword);
 
   lastKeyword = selected;
@@ -77,11 +82,9 @@ function generateSign(params){
 
 function extractLowestPrice(product){
 
-  let price =
-  product.target_app_sale_price ||
-  product.app_sale_price ||
-  product.original_price ||
-  "0";
+  let price = product.app_sale_price;
+
+  if(!price) return 0;
 
   price = price.toString();
 
@@ -179,7 +182,7 @@ ${title}
 4 יתרונות
 משפט סיום
 
-מחיר בסוף:
+המחיר בסוף:
 
 💥 המחיר: ₪${price} בלבד! 💥
 
