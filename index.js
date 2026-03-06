@@ -167,11 +167,9 @@ ${title}
   try{
 
     const prompt = `
-כתוב פוסט דילים בעברית בסגנון טבעי של קבוצת דילים.
+כתוב פוסט דילים בעברית.
 
-מבנה:
-
-שם מוצר עם אימוג'י
+שם מוצר
 משפט קצר
 4 יתרונות
 סיום
@@ -329,7 +327,7 @@ async function fetchDeal(){
     const marketingText =
     await generateMarketingText(translatedTitle,finalPrice);
 
-    const messageText = `${selectedProduct.product_main_image_url}
+    const messageText = `![](${selectedProduct.product_main_image_url})
 
 ${marketingText}
 
