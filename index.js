@@ -172,9 +172,9 @@ ${title}
 מבנה:
 
 שם מוצר עם אימוג'י
-משפט קצר שמסביר למה המוצר שימושי
+משפט קצר
 4 יתרונות
-משפט סיום
+סיום
 
 מחיר בסוף:
 
@@ -329,7 +329,7 @@ async function fetchDeal(){
     const marketingText =
     await generateMarketingText(translatedTitle,finalPrice);
 
-    const messageText = `[🖼 תמונה](${selectedProduct.product_main_image_url})
+    const messageText = `${selectedProduct.product_main_image_url}
 
 ${marketingText}
 
