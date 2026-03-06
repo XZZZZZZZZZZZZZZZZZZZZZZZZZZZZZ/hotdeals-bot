@@ -167,14 +167,19 @@ ${title}
   try{
 
     const prompt = `
-כתוב פוסט דילים בעברית.
+כתוב פוסט דילים בעברית בסגנון שיווקי.
 
-שם מוצר
-משפט קצר
-4 יתרונות
-סיום
+מבנה חובה:
 
-מחיר בסוף:
+שם מוצר עם אימוג'י
+משפט קצר שמסביר למה המוצר שימושי
+
+🚀 יתרונות:
+4 יתרונות קצרים עם אימוג'ים
+
+משפט סיום קצר
+
+מחיר בסוף כך:
 
 💥 המחיר: ₪${price} בלבד! 💥
 
@@ -327,7 +332,10 @@ async function fetchDeal(){
     const marketingText =
     await generateMarketingText(translatedTitle,finalPrice);
 
-    const messageText = `![](${selectedProduct.product_main_image_url})
+    const resizedImage =
+`https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://","")}`;
+
+    const messageText = `![](${resizedImage})
 
 ${marketingText}
 
