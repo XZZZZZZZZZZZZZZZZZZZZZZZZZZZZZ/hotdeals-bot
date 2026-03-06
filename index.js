@@ -22,6 +22,7 @@ const CHANNEL_API_URL =
 const API_KEY = "987654321";
 
 const SENT_FILE = "sent_products.json";
+
 let sentProducts = new Set();
 
 if (fs.existsSync(SENT_FILE)) {
@@ -249,7 +250,10 @@ async function fetchDeal(){
     tracking_id:TRACKING_ID,
 
     ship_to_country:"IL",
-    target_currency:"ILS"
+    target_currency:"ILS",
+    target_language:"HE",
+
+    sort:"SALE_PRICE_ASC"
 
   };
 
@@ -313,8 +317,11 @@ async function fetchDeal(){
     if(!selectedProduct || !affiliateLink)
     return;
 
+    const rawPrice =
+    extractLowestPrice(selectedProduct);
+
     const finalPrice =
-    extractLowestPrice(selectedProduct).toFixed(2);
+    Math.floor(rawPrice * 100) / 100;
 
     const translatedTitle =
     await translateTitle(selectedProduct.product_title);
