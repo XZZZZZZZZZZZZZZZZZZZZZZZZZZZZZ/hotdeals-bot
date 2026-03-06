@@ -9,9 +9,7 @@ let openai = null;
 
 if (process.env.OPENAI_API_KEY) {
   const OpenAI = require("openai");
-  openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-  });
+  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
 const APP_KEY = process.env.ALI_APP_KEY;
@@ -24,7 +22,6 @@ const CHANNEL_API_URL =
 const API_KEY = "987654321";
 
 const SENT_FILE = "sent_products.json";
-
 let sentProducts = new Set();
 
 if (fs.existsSync(SENT_FILE)) {
@@ -37,23 +34,19 @@ let lastKeyword = null;
 function getNextKeyword(){
 
   const KEYWORDS = [
-
     "smart watch",
     "bluetooth earbuds",
     "phone accessories",
     "car accessories",
     "kitchen gadgets",
     "gaming gadgets"
-
   ];
 
   let selected;
 
   do{
-
     selected =
     KEYWORDS[Math.floor(Math.random()*KEYWORDS.length)];
-
   }while(selected === lastKeyword);
 
   lastKeyword = selected;
@@ -82,7 +75,7 @@ function generateSign(params){
 
 function extractLowestPrice(product){
 
-  let price = product.app_sale_price;
+  let price = product.target_app_sale_price;
 
   if(!price) return 0;
 
@@ -173,16 +166,16 @@ ${title}
   try{
 
     const prompt = `
-כתוב פוסט דילים בעברית בסגנון שיווקי טבעי.
+כתוב פוסט דילים בעברית בסגנון טבעי של קבוצת דילים.
 
 מבנה:
 
 שם מוצר עם אימוג'י
-משפט קצר למה המוצר שימושי
+משפט קצר שמסביר למה המוצר שימושי
 4 יתרונות
 משפט סיום
 
-המחיר בסוף:
+מחיר בסוף:
 
 💥 המחיר: ₪${price} בלבד! 💥
 
@@ -256,8 +249,7 @@ async function fetchDeal(){
     tracking_id:TRACKING_ID,
 
     ship_to_country:"IL",
-    target_currency:"ILS",
-    target_language:"HE"
+    target_currency:"ILS"
 
   };
 
