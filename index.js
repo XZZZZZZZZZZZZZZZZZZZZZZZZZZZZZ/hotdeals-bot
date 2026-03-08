@@ -39,7 +39,6 @@ function loadKeywords(){
     const data = JSON.parse(fs.readFileSync("keywords.json"));
     return data.keywords;
   }
-
   catch{
     return [
       "smart watch",
@@ -184,7 +183,6 @@ ${title}
 כתוב פוסט דיל בעברית.
 
 אסור להמציא מוצר אחר.
-התיאור חייב להתאים לשם המוצר בלבד.
 
 שם המוצר:
 ${title}
@@ -197,9 +195,7 @@ ${title}
 🚀 יתרונות:
 3-4 יתרונות
 
-משפט סיום קצר.
-
-בסוף כתוב:
+בסוף:
 
 💥 המחיר: ₪${price} בלבד! 💥
 `;
