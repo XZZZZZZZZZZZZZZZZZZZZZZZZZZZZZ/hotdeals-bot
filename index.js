@@ -31,9 +31,6 @@ if (fs.existsSync(SENT_FILE)) {
 }
 
 let lastKeyword = null;
-
-/* ===== מונה הודעות ===== */
-
 let postCounter = 0;
 
 function getNextKeyword(){
@@ -171,16 +168,21 @@ ${title}
   try{
 
     const prompt = `
-כתוב פוסט דילים בעברית.
+כתוב פוסט דילים בעברית בסגנון שיווקי.
 
-מבנה:
-שם מוצר
-משפט קצר
-🚀 4 יתרונות
-סיום
+מבנה חובה:
 
-מחיר:
-💥 ₪${price} בלבד! 💥
+שם מוצר עם אימוג'י
+משפט קצר שמסביר למה המוצר שימושי
+
+🚀 יתרונות:
+4 יתרונות קצרים עם אימוג'ים
+
+משפט סיום קצר
+
+מחיר בסוף כך:
+
+💥 המחיר: ₪${price} בלבד! 💥
 
 שם מוצר:
 ${title}
@@ -281,36 +283,36 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
-    /* ===== דיוון מחירים ===== */
+    /* דיוון מחירים */
 
     let minPrice = 10;
-    let maxPrice = 250;
+    let maxPrice = 200;
 
     const mode = postCounter % 5;
 
-    if (mode === 1) {
+    if(mode === 1){
       minPrice = 10;
       maxPrice = 80;
     }
 
-    if (mode === 2) {
-      minPrice = 50;
+    if(mode === 2){
+      minPrice = 30;
       maxPrice = 150;
     }
 
-    if (mode === 3) {
-      minPrice = 80;
-      maxPrice = 250;
-    }
-
-    if (mode === 4) {
-      minPrice = 10;
+    if(mode === 3){
+      minPrice = 50;
       maxPrice = 200;
     }
 
-    if (mode === 0) {
+    if(mode === 4){
       minPrice = 10;
-      maxPrice = 300;
+      maxPrice = 120;
+    }
+
+    if(mode === 0){
+      minPrice = 10;
+      maxPrice = 200;
     }
 
     let selectedProduct = null;
@@ -325,9 +327,6 @@ async function fetchDeal(){
       extractLowestPrice(product);
 
       if(!price || price < minPrice || price > maxPrice)
-      continue;
-
-      if(product.evaluate_rate && parseFloat(product.evaluate_rate) < 4)
       continue;
 
       const link =
