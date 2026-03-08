@@ -32,6 +32,9 @@ if (fs.existsSync(SENT_FILE)) {
 
 let lastKeyword = null;
 
+/* ===== מונה הודעות ===== */
+let postCounter = 0;
+
 function getNextKeyword(){
 
   const KEYWORDS = [
@@ -167,21 +170,16 @@ ${title}
   try{
 
     const prompt = `
-כתוב פוסט דילים בעברית בסגנון שיווקי.
+כתוב פוסט דילים בעברית.
 
-מבנה חובה:
+מבנה:
+שם מוצר
+משפט קצר
+🚀 4 יתרונות
+סיום
 
-שם מוצר עם אימוג'י
-משפט קצר שמסביר למה המוצר שימושי
-
-🚀 יתרונות:
-4 יתרונות קצרים עם אימוג'ים
-
-משפט סיום קצר
-
-מחיר בסוף כך:
-
-💥 המחיר: ₪${price} בלבד! 💥
+מחיר:
+💥 ₪${price} בלבד! 💥
 
 שם מוצר:
 ${title}
@@ -241,6 +239,8 @@ async function sendToChannel(text){
 
 async function fetchDeal(){
 
+  postCounter++;
+
   const params = {
 
     app_key:APP_KEY,
@@ -280,6 +280,16 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
+    /* ===== טווח מחיר דינמי ===== */
+
+    const minPrice = 10;
+
+    let maxPrice = 250;
+
+    if(postCounter % 5 === 0){
+      maxPrice = 300;
+    }
+
     let selectedProduct = null;
     let affiliateLink = null;
 
@@ -291,7 +301,10 @@ async function fetchDeal(){
       const price =
       extractLowestPrice(product);
 
-      if(!price || price>200)
+      if(!price || price < minPrice || price > maxPrice)
+      continue;
+
+      if(product.sale_volume < 50)
       continue;
 
       const link =
