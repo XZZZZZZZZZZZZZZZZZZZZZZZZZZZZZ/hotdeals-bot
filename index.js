@@ -41,7 +41,12 @@ function loadKeywords(){
 
   try{
     const data = JSON.parse(fs.readFileSync("keywords.json"));
-    return data.keywords;
+    
+    // התיקון: בדיקה האם מדובר במערך ישיר או באובייקט עם מפתח keywords
+    if (Array.isArray(data)) return data;
+    if (data && data.keywords) return data.keywords;
+    
+    return data;
   }
   catch{
     return [
@@ -305,8 +310,7 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
-    let minPrice = 10;
-    let maxPrice = 200;
+    let minPrice = 10;    let maxPrice = 200;
 
     if(postCounter % 5 === 0){
       maxPrice = 300;
