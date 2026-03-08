@@ -22,7 +22,6 @@ const CHANNEL_API_URL =
 const API_KEY = "987654321";
 
 const SENT_FILE = "sent_products.json";
-const KEYWORDS_FILE = "keywords.json";
 
 let sentProducts = new Set();
 
@@ -34,11 +33,26 @@ if (fs.existsSync(SENT_FILE)) {
 let lastKeyword = null;
 let postCounter = 0;
 
-/* טעינת מילות מפתח מהקובץ */
-
 function loadKeywords(){
-  const data = JSON.parse(fs.readFileSync(KEYWORDS_FILE));
-  return data.keywords;
+
+  try{
+
+    const data = JSON.parse(fs.readFileSync("keywords.json"));
+    return data.keywords;
+
+  }catch{
+
+    return [
+      "smart watch",
+      "bluetooth earbuds",
+      "phone accessories",
+      "car accessories",
+      "kitchen gadgets",
+      "gaming gadgets"
+    ];
+
+  }
+
 }
 
 function getNextKeyword(){
@@ -171,22 +185,13 @@ ${title}
     const prompt = `
 כתוב פוסט דילים בעברית בסגנון שיווקי.
 
-מבנה חובה:
+שם מוצר
+משפט קצר
 
-שם מוצר עם אימוג'י
-משפט קצר שמסביר למה המוצר שימושי
-
-🚀 יתרונות:
-4 יתרונות קצרים עם אימוג'ים
-
-משפט סיום קצר
-
-מחיר בסוף כך:
+🚀 יתרונות
+4 נקודות קצרות
 
 💥 המחיר: ₪${price} בלבד! 💥
-
-שם מוצר:
-${title}
 `;
 
     const completion =
@@ -262,10 +267,9 @@ async function fetchDeal(){
 
     sort:"SALE_PRICE_ASC",
 
-    /* יותר תוצאות */
-
     page_size:50,
     page_no: Math.floor(Math.random()*10)+1
+
   };
 
   params.sign = generateSign(params);
