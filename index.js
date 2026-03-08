@@ -33,6 +33,7 @@ if (fs.existsSync(SENT_FILE)) {
 let lastKeyword = null;
 
 /* ===== מונה הודעות ===== */
+
 let postCounter = 0;
 
 function getNextKeyword(){
@@ -280,13 +281,35 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
-    /* ===== טווח מחיר דינמי ===== */
+    /* ===== דיוון מחירים ===== */
 
-    const minPrice = 10;
-
+    let minPrice = 10;
     let maxPrice = 250;
 
-    if(postCounter % 5 === 0){
+    const mode = postCounter % 5;
+
+    if (mode === 1) {
+      minPrice = 10;
+      maxPrice = 80;
+    }
+
+    if (mode === 2) {
+      minPrice = 50;
+      maxPrice = 150;
+    }
+
+    if (mode === 3) {
+      minPrice = 80;
+      maxPrice = 250;
+    }
+
+    if (mode === 4) {
+      minPrice = 10;
+      maxPrice = 200;
+    }
+
+    if (mode === 0) {
+      minPrice = 10;
       maxPrice = 300;
     }
 
@@ -304,7 +327,7 @@ async function fetchDeal(){
       if(!price || price < minPrice || price > maxPrice)
       continue;
 
-      if(product.sale_volume < 50)
+      if(product.evaluate_rate && parseFloat(product.evaluate_rate) < 4)
       continue;
 
       const link =
