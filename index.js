@@ -36,12 +36,11 @@ let postCounter = 0;
 function loadKeywords(){
 
   try{
-
     const data = JSON.parse(fs.readFileSync("keywords.json"));
     return data.keywords;
+  }
 
-  }catch{
-
+  catch{
     return [
       "smart watch",
       "bluetooth earbuds",
@@ -50,7 +49,6 @@ function loadKeywords(){
       "kitchen gadgets",
       "gaming gadgets"
     ];
-
   }
 
 }
@@ -183,13 +181,25 @@ ${title}
   try{
 
     const prompt = `
-כתוב פוסט דילים בעברית בסגנון שיווקי.
+כתוב פוסט דיל בעברית.
 
-שם מוצר
+אסור להמציא מוצר אחר.
+התיאור חייב להתאים לשם המוצר בלבד.
+
+שם המוצר:
+${title}
+
+מבנה:
+
+שם מוצר עם אימוג'י
 משפט קצר
 
-🚀 יתרונות
-4 נקודות קצרות
+🚀 יתרונות:
+3-4 יתרונות
+
+משפט סיום קצר.
+
+בסוף כתוב:
 
 💥 המחיר: ₪${price} בלבד! 💥
 `;
