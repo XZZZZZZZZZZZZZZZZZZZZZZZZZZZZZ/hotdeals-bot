@@ -7,9 +7,13 @@ const fs = require("fs");
 
 let openai = null;
 
-if (process.env.OPENAI_API_KEY) {
-  const OpenAI = require("openai");
-  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+try{
+  if(process.env.OPENAI_API_KEY){
+    const OpenAI = require("openai");
+    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+}catch(e){
+  console.log("OpenAI לא זמין, ממשיכים בלי AI");
 }
 
 const APP_KEY = process.env.ALI_APP_KEY;
@@ -183,6 +187,7 @@ ${title}
 כתוב פוסט דיל בעברית.
 
 אסור להמציא מוצר אחר.
+התיאור חייב להיות תואם לשם המוצר בלבד.
 
 שם המוצר:
 ${title}
@@ -195,7 +200,9 @@ ${title}
 🚀 יתרונות:
 3-4 יתרונות
 
-בסוף:
+משפט סיום קצר.
+
+בסוף כתוב:
 
 💥 המחיר: ₪${price} בלבד! 💥
 `;
@@ -309,6 +316,11 @@ async function fetchDeal(){
     let affiliateLink = null;
 
     for(const product of products){
+
+      /* התיקון שמונע קריסות */
+
+      if(!product.product_id || !product.product_detail_url || !product.product_main_image_url)
+      continue;
 
       if(sentProducts.has(product.product_id))
       continue;
