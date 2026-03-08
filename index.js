@@ -283,36 +283,15 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
-    /* דיוון מחירים */
+    /* טווח מחירים יציב */
 
     let minPrice = 10;
     let maxPrice = 200;
 
-    const mode = postCounter % 5;
+    /* פעם בחמש הודעות מאפשר יותר יקר */
 
-    if(mode === 1){
-      minPrice = 10;
-      maxPrice = 80;
-    }
-
-    if(mode === 2){
-      minPrice = 30;
-      maxPrice = 150;
-    }
-
-    if(mode === 3){
-      minPrice = 50;
-      maxPrice = 200;
-    }
-
-    if(mode === 4){
-      minPrice = 10;
-      maxPrice = 120;
-    }
-
-    if(mode === 0){
-      minPrice = 10;
-      maxPrice = 200;
+    if(postCounter % 5 === 0){
+      maxPrice = 300;
     }
 
     let selectedProduct = null;
