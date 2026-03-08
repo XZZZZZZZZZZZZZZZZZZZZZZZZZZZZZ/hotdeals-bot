@@ -7,13 +7,9 @@ const fs = require("fs");
 
 let openai = null;
 
-try{
-  if(process.env.OPENAI_API_KEY){
-    const OpenAI = require("openai");
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-}catch(e){
-  console.log("OpenAI לא זמין");
+if (process.env.OPENAI_API_KEY) {
+  const OpenAI = require("openai");
+  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
 const APP_KEY = process.env.ALI_APP_KEY;
@@ -40,7 +36,8 @@ let postCounter = 0;
 function loadKeywords(){
 
   try{
-    const data = JSON.parse(fs.readFileSync("keywords.json"));
+    const data =
+    JSON.parse(fs.readFileSync("keywords.json"));
     return data.keywords;
   }
 
@@ -64,13 +61,16 @@ function getNextKeyword(){
   let selected;
 
   do{
+
     selected =
     KEYWORDS[Math.floor(Math.random()*KEYWORDS.length)];
+
   }while(selected === lastKeyword);
 
   lastKeyword = selected;
 
   return selected;
+
 }
 
 function generateSign(params){
@@ -186,25 +186,12 @@ ${title}
 
     const prompt = `
 כתוב פוסט דיל בעברית.
-
-אסור להמציא מוצר אחר.
-התיאור חייב להיות תואם לשם המוצר בלבד.
+אל תמציא מוצר אחר.
 
 שם המוצר:
 ${title}
 
-מבנה:
-
-שם מוצר עם אימוג'י
-משפט קצר
-
-🚀 יתרונות:
-3-4 יתרונות
-
-משפט סיום קצר.
-
 בסוף כתוב:
-
 💥 המחיר: ₪${price} בלבד! 💥
 `;
 
@@ -306,11 +293,24 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
-    let minPrice = 10;
-    let maxPrice = 200;
+    let minPrice = 5;
+    let maxPrice = 250;
 
-    if(postCounter % 5 === 0){
-      maxPrice = 300;
+    const mode = postCounter % 4;
+
+    if(mode === 1){
+      minPrice = 5;
+      maxPrice = 120;
+    }
+
+    if(mode === 2){
+      minPrice = 10;
+      maxPrice = 200;
+    }
+
+    if(mode === 3){
+      minPrice = 20;
+      maxPrice = 250;
     }
 
     let selectedProduct = null;
