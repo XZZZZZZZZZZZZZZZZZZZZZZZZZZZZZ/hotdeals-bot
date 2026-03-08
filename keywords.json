@@ -1,9 +1,11 @@
-[
-  "שעון חכם",
-  "אוזניות בלוטוס",
-  "אביזרי טלפון",
-  "אביזרי רכב",
-  "גאדג'טים למטבח",
-"AirPods 2",
-  "גאדג'ט לבית ולמטבח"
-]
+{
+  "keywords": [
+    "Smart Watch",
+    "Bluetooth Earbuds",
+    "Phone Accessories",
+    "Car Accessories",
+    "Kitchen Gadgets",
+    "AirPods 2",
+    "Home and Kitchen Gadgets"
+  ]
+}
