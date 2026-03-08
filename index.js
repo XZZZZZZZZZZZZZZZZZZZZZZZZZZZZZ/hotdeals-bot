@@ -22,6 +22,7 @@ const CHANNEL_API_URL =
 const API_KEY = "987654321";
 
 const SENT_FILE = "sent_products.json";
+const KEYWORDS_FILE = "keywords.json";
 
 let sentProducts = new Set();
 
@@ -33,16 +34,16 @@ if (fs.existsSync(SENT_FILE)) {
 let lastKeyword = null;
 let postCounter = 0;
 
+/* טעינת מילות מפתח מהקובץ */
+
+function loadKeywords(){
+  const data = JSON.parse(fs.readFileSync(KEYWORDS_FILE));
+  return data.keywords;
+}
+
 function getNextKeyword(){
 
-  const KEYWORDS = [
-    "smart watch",
-    "bluetooth earbuds",
-    "phone accessories",
-    "car accessories",
-    "kitchen gadgets",
-    "gaming gadgets"
-  ];
+  const KEYWORDS = loadKeywords();
 
   let selected;
 
@@ -259,8 +260,12 @@ async function fetchDeal(){
     target_currency:"ILS",
     target_language:"HE",
 
-    sort:"SALE_PRICE_ASC"
+    sort:"SALE_PRICE_ASC",
 
+    /* יותר תוצאות */
+
+    page_size:50,
+    page_no: Math.floor(Math.random()*10)+1
   };
 
   params.sign = generateSign(params);
@@ -283,12 +288,8 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
-    /* טווח מחירים יציב */
-
     let minPrice = 10;
     let maxPrice = 200;
-
-    /* פעם בחמש הודעות מאפשר יותר יקר */
 
     if(postCounter % 5 === 0){
       maxPrice = 300;
