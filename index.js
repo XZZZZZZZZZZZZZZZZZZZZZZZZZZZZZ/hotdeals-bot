@@ -31,7 +31,6 @@ if (fs.existsSync(SENT_FILE)) {
 }
 
 let lastKeyword = null;
-let postCounter = 0;
 
 function loadKeywords(){
 
@@ -61,10 +60,8 @@ function getNextKeyword(){
   let selected;
 
   do{
-
     selected =
     KEYWORDS[Math.floor(Math.random()*KEYWORDS.length)];
-
   }while(selected === lastKeyword);
 
   lastKeyword = selected;
@@ -172,26 +169,40 @@ async function generateMarketingText(title,price){
 
   if(!openai){
 
-    return `🔥 דיל חדש!
+    return `🔥 ${title}
 
-${title}
+מחפשים מוצר שימושי במחיר טוב? הנה דיל שכדאי לבדוק.
 
-💰 מחיר: ₪${price}
+🚀 יתרונות:
+• שימושי ונוח לשימוש
+• איכות טובה במחיר משתלם
+• מתאים לשימוש יומיומי
+• פתרון פשוט ויעיל
 
-🛒 שווה לבדוק!`;
+שווה לבדוק את הדיל לפני שייגמר.
+
+💥 המחיר: ₪${price} בלבד! 💥`;
 
   }
 
   try{
 
     const prompt = `
-כתוב פוסט דיל בעברית.
-אל תמציא מוצר אחר.
+כתוב פוסט דילים בעברית.
+
+מבנה חובה:
+
+1 כותרת עם שם המוצר ואימוג'י
+2 משפט קצר שמסביר מה זה המוצר
+3 כותרת: 🚀 יתרונות
+4 ארבעה יתרונות קצרים
+5 משפט סיום קצר
 
 שם המוצר:
 ${title}
 
-בסוף כתוב:
+בסוף כתוב בדיוק כך:
+
 💥 המחיר: ₪${price} בלבד! 💥
 `;
 
@@ -214,11 +225,11 @@ ${title}
 
   catch{
 
-    return `🔥 דיל חדש!
+    return `🔥 ${title}
 
-${title}
+דיל משתלם שכדאי לבדוק.
 
-💰 מחיר: ₪${price}`;
+💥 המחיר: ₪${price} בלבד! 💥`;
 
   }
 
@@ -249,8 +260,6 @@ async function sendToChannel(text){
 
 async function fetchDeal(){
 
-  postCounter++;
-
   const params = {
 
     app_key:APP_KEY,
@@ -269,9 +278,6 @@ async function fetchDeal(){
     sort:"SALE_PRICE_ASC",
 
     page_size:50,
-
-    /* כאן השינוי היחיד */
-
     page_no: Math.floor(Math.random()*50)+1
 
   };
@@ -296,33 +302,16 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
-    let minPrice = 5;
-    let maxPrice = 250;
-
-    const mode = postCounter % 4;
-
-    if(mode === 1){
-      minPrice = 5;
-      maxPrice = 120;
-    }
-
-    if(mode === 2){
-      minPrice = 10;
-      maxPrice = 200;
-    }
-
-    if(mode === 3){
-      minPrice = 20;
-      maxPrice = 250;
-    }
+    const priceRanges = [
+      {min:5,max:250},
+      {min:1,max:270},
+      {min:0.5,max:200}
+    ];
 
     let selectedProduct = null;
     let affiliateLink = null;
 
     for(const product of products){
-
-      if(!product.product_id || !product.product_detail_url || !product.product_main_image_url)
-      continue;
 
       if(sentProducts.has(product.product_id))
       continue;
@@ -330,8 +319,20 @@ async function fetchDeal(){
       const price =
       extractLowestPrice(product);
 
-      if(!price || price < minPrice || price > maxPrice)
-      continue;
+      if(!price) continue;
+
+      let valid = false;
+
+      for(const range of priceRanges){
+
+        if(price >= range.min && price <= range.max){
+          valid = true;
+          break;
+        }
+
+      }
+
+      if(!valid) continue;
 
       const link =
       await generateAffiliateLink(
