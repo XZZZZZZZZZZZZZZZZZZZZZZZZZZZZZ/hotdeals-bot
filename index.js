@@ -269,7 +269,10 @@ async function fetchDeal(){
     sort:"SALE_PRICE_ASC",
 
     page_size:50,
-    page_no: Math.floor(Math.random()*20)+1
+
+    /* כאן השינוי היחיד */
+
+    page_no: Math.floor(Math.random()*50)+1
 
   };
 
