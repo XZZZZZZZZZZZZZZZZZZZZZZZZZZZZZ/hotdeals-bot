@@ -5,6 +5,26 @@ const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
 
+/* ====== WHATSAPP ====== */
+const { Client, LocalAuth } = require("whatsapp-web.js");
+const qrcode = require("qrcode-terminal");
+
+const waClient = new Client({
+  authStrategy: new LocalAuth()
+});
+
+waClient.on("qr", qr => {
+  console.log("Scan WhatsApp QR:");
+  qrcode.generate(qr, { small: true });
+});
+
+waClient.on("ready", () => {
+  console.log("WhatsApp Connected");
+});
+
+waClient.initialize();
+/* ====================== */
+
 let openai = null;
 
 if (process.env.OPENAI_API_KEY) {
@@ -274,6 +294,28 @@ async function sendToChannel(text){
 
 }
 
+/* ====== WHATSAPP SEND FUNCTION ====== */
+async function sendToWhatsApp(text){
+
+  try{
+
+    const groupId = process.env.WHATSAPP_GROUP;
+
+    if(!groupId) return;
+
+    await waClient.sendMessage(groupId,text);
+
+  }
+
+  catch(err){
+
+    console.log("WhatsApp error:",err.message);
+
+  }
+
+}
+/* ==================================== */
+
 async function fetchDeal(){
 
   const params = {
@@ -399,6 +441,10 @@ ${marketingText}
 ${affiliateLink}`;
 
     await sendToChannel(messageText);
+
+/* ===== WHATSAPP SEND ===== */
+    await sendToWhatsApp(messageText);
+/* ========================= */
 
   }
 
