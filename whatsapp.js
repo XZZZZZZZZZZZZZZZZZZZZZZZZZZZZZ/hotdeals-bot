@@ -1,41 +1,37 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 
-// הגדרת הלקוח עם הגדרות מיוחדות לשרת (Railway)
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    // שימוש בתיקייה זמנית כדי למנוע בעיות הרשאות בשרת
+    authStrategy: new LocalAuth({
+        dataPath: '/tmp/.wwebjs_auth'
+    }),
     puppeteer: {
         headless: true,
+        // משתמש בדפדפן שהתקנו בשרת דרך המשתנים שהוספנו
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
             '--disable-gpu'
         ],
-        // בשרתים מסוימים צריך להוסיף את הנתיב לכרום, ב-Railway זה בדרך כלל לא חובה אם הגדרת nixpacks
     }
 });
 
-// הצגת קוד QR בלוגים של השרת
+// הצגת ה-QR בלוגים
 client.on('qr', (qr) => {
-    console.log('סרוק את קוד ה-QR הבא כדי להתחבר:');
+    console.log('סרוק את קוד ה-QR הבא ב-View Logs:');
     qrcode.generate(qr, { small: true });
 });
 
-// הודעה כשהחיבור הצליח
 client.on('ready', () => {
-    console.log('וואטסאפ מחובר ומוכן לעבודה!');
+    console.log('הוואטסאפ מחובר בהצלחה בשרת!');
 });
 
-// פונקציה להדפסת ה-ID של צ'אטים (כדי שתדע לאן לשלוח)
-client.on('message', message => {
-    if (message.body === 'בדיקה') {
-        console.log('התקבלה הודעת בדיקה מ-ID:', message.from);
-        message.reply('הבוט עובד!');
-    }
+// טיפול בשגיאות כדי שהשרת לא יקרוס מיד
+client.on('auth_failure', msg => {
+    console.error('שגיאת אימות:', msg);
 });
 
 client.initialize();
