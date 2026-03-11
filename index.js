@@ -5,31 +5,39 @@ const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
 
-/* WHATSAPP */
+/* ===== WHATSAPP ===== */
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 
 const waClient = new Client({
-  authStrategy: new LocalAuth()
+authStrategy: new LocalAuth(),
+puppeteer: {
+headless: true,
+args: [
+"--no-sandbox",
+"--disable-setuid-sandbox",
+"--disable-dev-shm-usage"
+]
+}
 });
 
 waClient.on("qr", qr => {
-  console.log("Scan WhatsApp QR:");
-  qrcode.generate(qr, { small: true });
+console.log("Scan WhatsApp QR:");
+qrcode.generate(qr, { small: true });
 });
 
 waClient.on("ready", () => {
-  console.log("WhatsApp Connected");
+console.log("WhatsApp Connected");
 });
 
 waClient.initialize();
-/* END WHATSAPP */
+/* ==================== */
 
 let openai = null;
 
 if (process.env.OPENAI_API_KEY) {
-  const OpenAI = require("openai");
-  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const OpenAI = require("openai");
+openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
 const APP_KEY = process.env.ALI_APP_KEY;
@@ -46,147 +54,153 @@ const SENT_FILE = "sent_products.json";
 let sentProducts = new Set();
 
 if (fs.existsSync(SENT_FILE)) {
-  const data = JSON.parse(fs.readFileSync(SENT_FILE));
-  sentProducts = new Set(data);
+const data = JSON.parse(fs.readFileSync(SENT_FILE));
+sentProducts = new Set(data);
 }
 
 let lastKeyword = null;
 
 function loadKeywords(){
-  try{
-    const data =
-    JSON.parse(fs.readFileSync("keywords.json"));
-    return data.keywords;
-  }
-  catch{
-    return [
-      "smart watch",
-      "bluetooth earbuds",
-      "phone accessories",
-      "car accessories",
-      "kitchen gadgets",
-      "gaming gadgets"
-    ];
-  }
+try{
+const data =
+JSON.parse(fs.readFileSync("keywords.json"));
+return data.keywords;
+}
+catch{
+return [
+"smart watch",
+"bluetooth earbuds",
+"phone accessories",
+"car accessories",
+"kitchen gadgets",
+"gaming gadgets"
+];
+}
 }
 
 function getNextKeyword(){
 
-  const KEYWORDS = loadKeywords();
+const KEYWORDS = loadKeywords();
 
-  let selected;
+let selected;
 
-  do{
-    selected =
-    KEYWORDS[Math.floor(Math.random()*KEYWORDS.length)];
-  }while(selected === lastKeyword);
+do{
+selected =
+KEYWORDS[Math.floor(Math.random()*KEYWORDS.length)];
+}while(selected === lastKeyword);
 
-  lastKeyword = selected;
+lastKeyword = selected;
 
-  return selected;
+return selected;
 
 }
 
 function generateSign(params){
 
-  const sorted = Object.keys(params).sort();
+const sorted = Object.keys(params).sort();
 
-  let base = APP_SECRET;
+let base = APP_SECRET;
 
-  sorted.forEach(key=>{
-    base += key + params[key];
-  });
+sorted.forEach(key=>{
+base += key + params[key];
+});
 
-  base += APP_SECRET;
+base += APP_SECRET;
 
-  return crypto
-  .createHash("md5")
-  .update(base)
-  .digest("hex")
-  .toUpperCase();
+return crypto
+.createHash("md5")
+.update(base)
+.digest("hex")
+.toUpperCase();
 }
 
 function extractLowestPrice(product){
 
-  let price = product.target_app_sale_price;
+let price = product.target_app_sale_price;
 
-  if(!price) return 0;
+if(!price) return 0;
 
-  price = price.toString();
+price = price.toString();
 
-  if(price.includes("-")){
-    price = price.split("-")[0];
-  }
+if(price.includes("-")){
+price = price.split("-")[0];
+}
 
-  return parseFloat(price);
+return parseFloat(price);
 }
 
 async function translateTitle(title){
 
-  try{
+try{
 
-    const res = await axios.get(
-      "https://translate.googleapis.com/translate_a/single",
-      {
-        params:{
-          client:"gtx",
-          sl:"auto",
-          tl:"he",
-          dt:"t",
-          q:title
-        }
-      }
-    );
-
-    return res.data[0][0][0];
-
+```
+const res = await axios.get(
+  "https://translate.googleapis.com/translate_a/single",
+  {
+    params:{
+      client:"gtx",
+      sl:"auto",
+      tl:"he",
+      dt:"t",
+      q:title
+    }
   }
+);
 
-  catch{
-    return title;
-  }
+return res.data[0][0][0];
+```
+
+}
+
+catch{
+return title;
+}
 
 }
 
 async function generateAffiliateLink(originalUrl){
 
-  const params = {
+const params = {
 
-    app_key: APP_KEY,
-    method:"aliexpress.affiliate.link.generate",
-    timestamp:Date.now(),
-    format:"json",
-    v:"2.0",
-    sign_method:"md5",
-    source_values:originalUrl,
-    tracking_id:TRACKING_ID,
-    promotion_link_type:2
+```
+app_key: APP_KEY,
+method:"aliexpress.affiliate.link.generate",
+timestamp:Date.now(),
+format:"json",
+v:"2.0",
+sign_method:"md5",
+source_values:originalUrl,
+tracking_id:TRACKING_ID,
+promotion_link_type:2
+```
 
-  };
+};
 
-  params.sign = generateSign(params);
+params.sign = generateSign(params);
 
-  const response =
-  await axios.get(
-    "https://api-sg.aliexpress.com/sync",
-    {params}
-  );
+const response =
+await axios.get(
+"https://api-sg.aliexpress.com/sync",
+{params}
+);
 
-  return response.data
-  ?.aliexpress_affiliate_link_generate_response
-  ?.resp_result
-  ?.result
-  ?.promotion_links
-  ?.promotion_link?.[0]
-  ?.promotion_link || null;
+return response.data
+?.aliexpress_affiliate_link_generate_response
+?.resp_result
+?.result
+?.promotion_links
+?.promotion_link?.[0]
+?.promotion_link || null;
 
 }
 
 async function generateMarketingText(title,price){
 
-  if(!openai){
+if(!openai){
 
-    return `🔥 דיל חדש! 🔥
+```
+return `🔥 דיל חדש! 🔥
+```
 
 📦 ${title}
 
@@ -204,12 +218,17 @@ async function generateMarketingText(title,price){
 
 `;
 
-  }
+}
 
-  try{
+try{
 
-    const prompt = `
+```
+const prompt = `
+```
+
 כתוב פוסט דילים בעברית בסגנון ערוצי דילים גדולים.
+
+מבנה חובה:
 
 🔥 דיל חדש! 🔥
 
@@ -220,7 +239,9 @@ async function generateMarketingText(title,price){
 🚀 יתרונות:
 4 יתרונות קצרים עם האימוג'י ✅
 
-בסוף:
+משפט סיום קצר שמעודד קנייה.
+
+בסוף כתוב:
 
 💰 מחיר: ₪${price}
 
@@ -228,197 +249,246 @@ async function generateMarketingText(title,price){
 ${title}
 `;
 
-    const completion =
-    await openai.chat.completions.create({
+```
+const completion =
+await openai.chat.completions.create({
 
-      model:"gpt-4o-mini",
+  model:"gpt-4o-mini",
 
-      messages:[
-        {role:"user",content:prompt}
-      ],
+  messages:[
+    {role:"user",content:prompt}
+  ],
 
-      temperature:0.9
+  temperature:0.9
 
-    });
+});
 
-    return completion.choices[0].message.content;
+return completion.choices[0].message.content;
+```
 
-  }
+}
 
-  catch{
+catch{
 
-    return `🔥 דיל חדש! 🔥
+```
+return `🔥 דיל חדש! 🔥
+```
 
 📦 ${title}
+
+מוצר שימושי במחיר משתלם.
+
+🚀 יתרונות:
+✅ איכות טובה
+✅ שימוש נוח
+✅ מתאים ליום יום
+✅ מחיר משתלם
 
 💰 מחיר: ₪${price}
 
 `;
 
-  }
+}
 
 }
 
 async function sendToChannel(text){
 
-  await axios.post(
+await axios.post(
 
-    CHANNEL_API_URL,
+```
+CHANNEL_API_URL,
 
-    {
-      text:text,
-      author:"Deals Bot",
-      timestamp:new Date().toISOString()
-    },
+{
+  text:text,
+  author:"Deals Bot",
+  timestamp:new Date().toISOString()
+},
 
-    {
-      headers:{
-        "Content-Type":"application/json",
-        "X-API-Key":API_KEY
-      }
-    }
+{
+  headers:{
+    "Content-Type":"application/json",
+    "X-API-Key":API_KEY
+  }
+}
+```
 
-  );
+);
 
 }
 
-/* WHATSAPP SEND */
+/* ===== WHATSAPP SEND ===== */
+
 async function sendToWhatsApp(text){
 
-  try{
+try{
 
-    await waClient.sendMessage(
-      "972534194557@c.us",
-      text
-    );
-
-  }
-
-  catch(err){
-
-    console.log("WhatsApp error:",err.message);
-
-  }
+```
+await waClient.sendMessage(
+  "972534194557@c.us",
+  text
+);
+```
 
 }
+
+catch(err){
+
+```
+console.log("WhatsApp error:",err.message);
+```
+
+}
+
+}
+
+/* ========================= */
 
 async function fetchDeal(){
 
-  const params = {
+const params = {
 
-    app_key:APP_KEY,
-    method:"aliexpress.affiliate.product.query",
-    timestamp:Date.now(),
-    format:"json",
-    v:"2.0",
-    sign_method:"md5",
-    keywords:getNextKeyword(),
-    tracking_id:TRACKING_ID,
+```
+app_key:APP_KEY,
+method:"aliexpress.affiliate.product.query",
+timestamp:Date.now(),
+format:"json",
+v:"2.0",
+sign_method:"md5",
+keywords:getNextKeyword(),
+tracking_id:TRACKING_ID,
 
-    ship_to_country:"IL",
-    target_currency:"ILS",
-    target_language:"HE",
+ship_to_country:"IL",
+target_currency:"ILS",
+target_language:"HE",
 
-    sort:"SALE_PRICE_ASC",
+sort:"SALE_PRICE_ASC",
 
-    page_size:50,
-    page_no: Math.floor(Math.random()*50)+1
+page_size:50,
+page_no: Math.floor(Math.random()*50)+1
+```
 
-  };
+};
 
-  params.sign = generateSign(params);
+params.sign = generateSign(params);
 
-  try{
+try{
 
-    const response =
-    await axios.get(
-      "https://api-sg.aliexpress.com/sync",
-      {params}
-    );
+```
+const response =
+await axios.get(
+  "https://api-sg.aliexpress.com/sync",
+  {params}
+);
 
-    const products =
-    response.data
-    ?.aliexpress_affiliate_product_query_response
-    ?.resp_result
-    ?.result
-    ?.products
-    ?.product;
+const products =
+response.data
+?.aliexpress_affiliate_product_query_response
+?.resp_result
+?.result
+?.products
+?.product;
 
-    if(!products?.length) return;
+if(!products?.length) return;
 
-    let selectedProduct = null;
-    let affiliateLink = null;
+const priceRanges = [
+  {min:5,max:250},
+  {min:1,max:270},
+  {min:0.5,max:200}
+];
 
-    for(const product of products){
+let selectedProduct = null;
+let affiliateLink = null;
 
-      if(sentProducts.has(product.product_id))
-      continue;
+for(const product of products){
 
-      const price =
-      extractLowestPrice(product);
+  if(sentProducts.has(product.product_id))
+  continue;
 
-      if(!price) continue;
+  const price =
+  extractLowestPrice(product);
 
-      const link =
-      await generateAffiliateLink(
-        product.product_detail_url
-      );
+  if(!price) continue;
 
-      if(link){
+  let valid = false;
 
-        selectedProduct = product;
-        affiliateLink = link;
+  for(const range of priceRanges){
 
-        sentProducts.add(product.product_id);
-
-        fs.writeFileSync(
-          SENT_FILE,
-          JSON.stringify([...sentProducts])
-        );
-
-        break;
-
-      }
-
+    if(price >= range.min && price <= range.max){
+      valid = true;
+      break;
     }
 
-    if(!selectedProduct || !affiliateLink)
-    return;
+  }
 
-    const rawPrice =
-    extractLowestPrice(selectedProduct);
+  if(!valid) continue;
 
-    const finalPrice =
-    Math.floor(rawPrice * 100) / 100;
+  const link =
+  await generateAffiliateLink(
+    product.product_detail_url
+  );
 
-    const translatedTitle =
-    await translateTitle(selectedProduct.product_title);
+  if(link){
 
-    const marketingText =
-    await generateMarketingText(translatedTitle,finalPrice);
+    selectedProduct = product;
+    affiliateLink = link;
 
-    const resizedImage =
+    sentProducts.add(product.product_id);
+
+    fs.writeFileSync(
+      SENT_FILE,
+      JSON.stringify([...sentProducts])
+    );
+
+    break;
+
+  }
+
+}
+
+if(!selectedProduct || !affiliateLink)
+return;
+
+const rawPrice =
+extractLowestPrice(selectedProduct);
+
+const finalPrice =
+Math.floor(rawPrice * 100) / 100;
+
+const translatedTitle =
+await translateTitle(selectedProduct.product_title);
+
+const marketingText =
+await generateMarketingText(translatedTitle,finalPrice);
+
+const resizedImage =
+```
+
 `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://","")}`;
 
-    const messageText = `![](${resizedImage})
+```
+const messageText = `![](${resizedImage})
+```
 
 ${marketingText}
 
 🛒 להזמנה:
 ${affiliateLink}`;
 
-    await sendToChannel(messageText);
+```
+await sendToChannel(messageText);
+await sendToWhatsApp(messageText);
+```
 
-/* SEND TO WHATSAPP */
-    await sendToWhatsApp(messageText);
+}
 
-  }
+catch(err){
 
-  catch(err){
+```
+console.log(err.response?.data || err.message);
+```
 
-    console.log(err.response?.data || err.message);
-
-  }
+}
 
 }
 
