@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
 
-/* ====== WHATSAPP ====== */
+/* WHATSAPP */
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 
@@ -23,7 +23,7 @@ waClient.on("ready", () => {
 });
 
 waClient.initialize();
-/* ====================== */
+/* END WHATSAPP */
 
 let openai = null;
 
@@ -211,8 +211,6 @@ async function generateMarketingText(title,price){
     const prompt = `
 כתוב פוסט דילים בעברית בסגנון ערוצי דילים גדולים.
 
-מבנה חובה:
-
 🔥 דיל חדש! 🔥
 
 📦 שם המוצר
@@ -222,9 +220,7 @@ async function generateMarketingText(title,price){
 🚀 יתרונות:
 4 יתרונות קצרים עם האימוג'י ✅
 
-משפט סיום קצר שמעודד קנייה.
-
-בסוף כתוב:
+בסוף:
 
 💰 מחיר: ₪${price}
 
@@ -254,14 +250,6 @@ ${title}
     return `🔥 דיל חדש! 🔥
 
 📦 ${title}
-
-מוצר שימושי במחיר משתלם.
-
-🚀 יתרונות:
-✅ איכות טובה
-✅ שימוש נוח
-✅ מתאים ליום יום
-✅ מחיר משתלם
 
 💰 מחיר: ₪${price}
 
@@ -294,16 +282,15 @@ async function sendToChannel(text){
 
 }
 
-/* ====== WHATSAPP SEND FUNCTION ====== */
+/* WHATSAPP SEND */
 async function sendToWhatsApp(text){
 
   try{
 
-    const groupId = process.env.WHATSAPP_GROUP;
-
-    if(!groupId) return;
-
-    await waClient.sendMessage(groupId,text);
+    await waClient.sendMessage(
+      "972534194557@c.us",
+      text
+    );
 
   }
 
@@ -314,7 +301,6 @@ async function sendToWhatsApp(text){
   }
 
 }
-/* ==================================== */
 
 async function fetchDeal(){
 
@@ -360,12 +346,6 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
-    const priceRanges = [
-      {min:5,max:250},
-      {min:1,max:270},
-      {min:0.5,max:200}
-    ];
-
     let selectedProduct = null;
     let affiliateLink = null;
 
@@ -378,19 +358,6 @@ async function fetchDeal(){
       extractLowestPrice(product);
 
       if(!price) continue;
-
-      let valid = false;
-
-      for(const range of priceRanges){
-
-        if(price >= range.min && price <= range.max){
-          valid = true;
-          break;
-        }
-
-      }
-
-      if(!valid) continue;
 
       const link =
       await generateAffiliateLink(
@@ -442,9 +409,8 @@ ${affiliateLink}`;
 
     await sendToChannel(messageText);
 
-/* ===== WHATSAPP SEND ===== */
+/* SEND TO WHATSAPP */
     await sendToWhatsApp(messageText);
-/* ========================= */
 
   }
 
