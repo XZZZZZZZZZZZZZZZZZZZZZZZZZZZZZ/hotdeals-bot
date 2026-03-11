@@ -1,5 +1,11 @@
-[phases.setup]
-nixPkgs = ["nodejs", "google-chrome"]
-
-[phases.build]
-cmds = ["npm install"]
+{
+  "providers": ["node"],
+  "phases": {
+    "setup": {
+      "nixPkgs": ["nodejs", "google-chrome"]
+    },
+    "install": {
+      "cmds": ["npm install"]
+    }
+  }
+}
