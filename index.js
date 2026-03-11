@@ -1,3 +1,4 @@
+const whatsapp = require('./whatsapp.js');
 process.env.TZ = "Asia/Jerusalem";
 
 const axios = require("axios");
