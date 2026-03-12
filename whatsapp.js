@@ -1,12 +1,13 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 
-// הגדרות הלקוח - חסכוני במשאבים כדי למנוע קריסות
+// הגדרות הלקוח - כולל תיקון ה-Timeout והנתיב לדפדפן
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
         executablePath: '/usr/bin/google-chrome-stable',
+        protocolTimeout: 0, 
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -18,10 +19,9 @@ const client = new Client({
     }
 });
 
-// הגדרת QR משופרת ללוגים
+// הצגת ה-QR בלוגים
 client.on('qr', (qr) => {
     console.log('--- סרוק את הקוד למטה ---');
-    // inverse: true הופך צבעים כדי שהטלפון יזהה את זה על רקע שחור
     qrcode.generate(qr, { small: true });
 });
 
