@@ -1,7 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 
-// הגדרות הלקוח עם דגש על חיסכון במשאבים
+// הגדרות הלקוח - חסכוני במשאבים כדי להוריד עלויות
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -11,21 +11,22 @@ const client = new Client({
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
-            '--no-first-run',
             '--no-zygote',
             '--single-process'
         ],
     }
 });
 
-// הדפסת QR קטן יותר - בדרך כלל נסרק הרבה יותר טוב ב-Railway
+// הגדרת QR משופרת ללוגים של Railway
 client.on('qr', (qr) => {
-    console.log('סרוק את קוד ה-QR המופיע כאן למטה:');
+    console.log('--- סרוק את הקוד למטה ---');
+    // small: true מקטין את הקוד
+    // inverse: true הופך צבעים כדי שהטלפון יזהה את זה על רקע שחור
     qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', () => {
-    console.log('הוואטסאפ מחובר בהצלחה!');
+    console.log('הוואטסאפ מחובר ומוכן!');
 });
 
 client.on('auth_failure', (msg) => {
