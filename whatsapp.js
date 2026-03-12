@@ -14,8 +14,10 @@ const client = new Client({
             '--disable-gpu',
             '--no-zygote',
             '--single-process',
-            '--disable-extensions',
-            '--no-first-run'
+            '--disable-setuid-sandbox',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-extensions'
         ],
     }
 });
@@ -23,18 +25,19 @@ const client = new Client({
 client.on('qr', (qr) => {
     console.log('--- QR RECEIVED ---');
     qrcode.generate(qr, { small: true });
-    console.log('סרוק את הקוד שלמעלה כדי להתחבר');
 });
 
 client.on('ready', () => {
-    console.log('הוואטסאפ מחובר ומוכן!');
+    console.log('✅ וואטסאפ מחובר!');
 });
 
-client.on('auth_failure', (msg) => {
-    console.error('שגיאת אימות:', msg);
-});
+// הוספת לוג כדי לראות איפה זה נתקע בדיוק
+console.log('1. מתחיל את תהליך האתחול...');
 
-console.log('מאתחל את הלקוח... זה עשוי לקחת כמה דקות ב-Koyeb');
-client.initialize().catch(err => console.error('שגיאה באתחול:', err));
+client.initialize().then(() => {
+    console.log('2. האתחול הסתיים, מחכה ל-QR או לחיבור...');
+}).catch(err => {
+    console.error('❌ שגיאה באתחול:', err);
+});
 
 module.exports = client;
