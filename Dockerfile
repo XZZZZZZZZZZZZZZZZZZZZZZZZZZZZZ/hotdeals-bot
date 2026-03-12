@@ -14,4 +14,4 @@ RUN npm install
 COPY . .
 
 # הפעלת הפרויקט
-CMD ["npm", "start"]
+CMD ["node", "index.js"]
