@@ -6,6 +6,12 @@ const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
 
+// --- מנגנון הגנה נגד קריסות (חשוב ל-Koyeb) ---
+process.on('unhandledRejection', (reason, promise) => {
+  console.log('⚠️ שגיאה שנתפסה בחירום:', reason);
+});
+// ------------------------------------------
+
 let openai = null;
 
 if (process.env.OPENAI_API_KEY) {
@@ -17,30 +23,37 @@ const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
 const TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-const CHANNEL_API_URL =
-"https://dilim.clickandgo.cfd/api/import/post";
-
+const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
 // --- זה השינוי היחיד שנוסף לשרת Koyeb ---
 const DATA_DIR = "/data";
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (e) {
+    console.log("Error creating data dir:", e.message);
+  }
+}
 const SENT_FILE = "/data/sent_products.json";
 // ----------------------------------------
 
 let sentProducts = new Set();
 
 if (fs.existsSync(SENT_FILE)) {
-  const data = JSON.parse(fs.readFileSync(SENT_FILE));
-  sentProducts = new Set(data);
+  try {
+    const data = JSON.parse(fs.readFileSync(SENT_FILE));
+    sentProducts = new Set(data);
+  } catch (e) {
+    console.log("Error loading sent products:", e.message);
+  }
 }
 
 let lastKeyword = null;
 
 function loadKeywords(){
   try{
-    const data =
-    JSON.parse(fs.readFileSync("keywords.json"));
+    const data = JSON.parse(fs.readFileSync("keywords.json"));
     return data.keywords;
   }
   catch{
@@ -56,34 +69,22 @@ function loadKeywords(){
 }
 
 function getNextKeyword(){
-
   const KEYWORDS = loadKeywords();
-
   let selected;
-
   do{
-    selected =
-    KEYWORDS[Math.floor(Math.random()*KEYWORDS.length)];
+    selected = KEYWORDS[Math.floor(Math.random()*KEYWORDS.length)];
   }while(selected === lastKeyword);
-
   lastKeyword = selected;
-
   return selected;
-
 }
 
 function generateSign(params){
-
   const sorted = Object.keys(params).sort();
-
   let base = APP_SECRET;
-
   sorted.forEach(key=>{
     base += key + params[key];
   });
-
   base += APP_SECRET;
-
   return crypto
   .createHash("md5")
   .update(base)
@@ -92,24 +93,17 @@ function generateSign(params){
 }
 
 function extractLowestPrice(product){
-
   let price = product.target_app_sale_price;
-
   if(!price) return 0;
-
   price = price.toString();
-
   if(price.includes("-")){
     price = price.split("-")[0];
   }
-
   return parseFloat(price);
 }
 
 async function translateTitle(title){
-
   try{
-
     const res = await axios.get(
       "https://translate.googleapis.com/translate_a/single",
       {
@@ -123,21 +117,15 @@ async function translateTitle(title){
         timeout: 8000
       }
     );
-
     return res.data[0][0][0];
-
   }
-
   catch{
     return title;
   }
-
 }
 
 async function generateAffiliateLink(originalUrl){
-
   const params = {
-
     app_key: APP_KEY,
     method:"aliexpress.affiliate.link.generate",
     timestamp:Date.now(),
@@ -147,31 +135,30 @@ async function generateAffiliateLink(originalUrl){
     source_values:originalUrl,
     tracking_id:TRACKING_ID,
     promotion_link_type:2
-
   };
 
   params.sign = generateSign(params);
 
-  const response =
-  await axios.get(
-    "https://api-sg.aliexpress.com/sync",
-    {params, timeout: 8000}
-  );
-
-  return response.data
-  ?.aliexpress_affiliate_link_generate_response
-  ?.resp_result
-  ?.result
-  ?.promotion_links
-  ?.promotion_link?.[0]
-  ?.promotion_link || null;
-
+  try {
+    const response = await axios.get(
+      "https://api-sg.aliexpress.com/sync",
+      {params, timeout: 8000}
+    );
+    return response.data
+    ?.aliexpress_affiliate_link_generate_response
+    ?.resp_result
+    ?.result
+    ?.promotion_links
+    ?.promotion_link?.[0]
+    ?.promotion_link || null;
+  } catch (err) {
+    console.log("Error generating affiliate link:", err.message);
+    return null;
+  }
 }
 
 async function generateMarketingText(title,price){
-
   if(!openai){
-
     return `🔥 דיל חדש! 🔥
 
 📦 ${title}
@@ -189,11 +176,9 @@ async function generateMarketingText(title,price){
 שווה לבדוק לפני שייגמר!
 
 `;
-
   }
 
   try{
-
     const prompt = `
 כתוב פוסט דילים בעברית בסגנון ערוצי דילים גדולים.
 
@@ -220,24 +205,16 @@ ${title}
 
     const completion =
     await openai.chat.completions.create({
-
       model:"gpt-4o-mini",
-
       messages:[
         {role:"user",content:prompt}
       ],
-
       temperature:0.8,
       max_tokens: 300
-
     });
-
     return completion.choices[0].message.content;
-
   }
-
   catch{
-
     return `🔥 דיל חדש! 🔥
 
 📦 ${title}
@@ -253,39 +230,33 @@ ${title}
 💰 מחיר: ₪${price}
 
 `;
-
   }
-
 }
 
 async function sendToChannel(text){
-
-  await axios.post(
-
-    CHANNEL_API_URL,
-
-    {
-      text:text,
-      author:"Deals Bot",
-      timestamp:new Date().toISOString()
-    },
-
-    {
-      headers:{
-        "Content-Type":"application/json",
-        "X-API-Key":API_KEY
+  try {
+    await axios.post(
+      CHANNEL_API_URL,
+      {
+        text:text,
+        author:"Deals Bot",
+        timestamp:new Date().toISOString()
       },
-      timeout: 10000
-    }
-
-  );
-
+      {
+        headers:{
+          "Content-Type":"application/json",
+          "X-API-Key":API_KEY
+        },
+        timeout: 10000
+      }
+    );
+  } catch (err) {
+    console.log("Error sending to channel API:", err.message);
+  }
 }
 
 async function fetchDeal(){
-
   const params = {
-
     app_key:APP_KEY,
     method:"aliexpress.affiliate.product.query",
     timestamp:Date.now(),
@@ -294,22 +265,17 @@ async function fetchDeal(){
     sign_method:"md5",
     keywords:getNextKeyword(),
     tracking_id:TRACKING_ID,
-
     ship_to_country:"IL",
     target_currency:"ILS",
     target_language:"HE",
-
     sort:"SALE_PRICE_ASC",
-
     page_size:20,
     page_no: Math.floor(Math.random()*50)+1
-
   };
 
   params.sign = generateSign(params);
 
   try{
-
     const response =
     await axios.get(
       "https://api-sg.aliexpress.com/sync",
@@ -336,7 +302,6 @@ async function fetchDeal(){
     let affiliateLink = null;
 
     for(const product of products){
-
       if(sentProducts.has(product.product_id))
       continue;
 
@@ -348,12 +313,10 @@ async function fetchDeal(){
       let valid = false;
 
       for(const range of priceRanges){
-
         if(price >= range.min && price <= range.max){
           valid = true;
           break;
         }
-
       }
 
       if(!valid) continue;
@@ -364,21 +327,20 @@ async function fetchDeal(){
       );
 
       if(link){
-
         selectedProduct = product;
         affiliateLink = link;
-
         sentProducts.add(product.product_id);
 
-        fs.writeFileSync(
-          SENT_FILE,
-          JSON.stringify([...sentProducts])
-        );
-
+        try {
+          fs.writeFileSync(
+            SENT_FILE,
+            JSON.stringify([...sentProducts])
+          );
+        } catch (e) {
+          console.log("Error saving sent file:", e.message);
+        }
         break;
-
       }
-
     }
 
     if(!selectedProduct || !affiliateLink)
@@ -409,13 +371,9 @@ ${affiliateLink}`;
     await sendToChannel(messageText);
 
   }
-
   catch(err){
-
-    console.log(err.response?.data || err.message);
-
+    console.log("General fetch error:", err.message);
   }
-
 }
 
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
