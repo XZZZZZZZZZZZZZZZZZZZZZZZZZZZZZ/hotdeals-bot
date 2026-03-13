@@ -3,30 +3,41 @@ const qrcode = require('qrcode-terminal');
 
 const client = new Client({
     authStrategy: new LocalAuth(),
+    // הגדרה קריטית למניעת ה-Timeout שקרה לך
+    authTimeoutMs: 0, 
+    qrMaxRetries: 10,
     puppeteer: {
         headless: true,
         executablePath: '/usr/bin/google-chrome-stable',
+        // ביטול הגבלת זמן לחלוטין
+        protocolTimeout: 0, 
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
-            '--no-zygote'
+            '--no-zygote',
+            '--single-process'
         ],
     }
 });
 
 client.on('qr', (qr) => {
-    console.log('--- הנה הקוד! אם הוא נראה מפוזר, הקטן את המסך ---');
-    // הוספנו true כאן כדי להכריח את ה-QR להיות קטן וברור יותר
+    console.log('--- הקוד הגיע! סרוק עכשיו ---');
     qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', () => {
-    console.log('✅ מחובר בהצלחה!');
+    console.log('✅ וואטסאפ מחובר ומוכן!');
 });
 
-console.log('מנסה להפעיל את הדפדפן... המתן 2 דקות');
-client.initialize().catch(err => console.log('שגיאת אתחול:', err));
+// לוג כדי שנדע שהתהליך רץ ולא תקוע
+console.log('מנסה להפעיל את הדפדפן... זה יכול לקחת כמה דקות, אל תתייאש.');
+
+client.initialize().catch(err => {
+    console.error('שגיאה באתחול (מנסה שוב...):', err.message);
+    // ניסיון אתחול חוזר במקרה של כישלון
+    setTimeout(() => client.initialize(), 5000);
+});
 
 module.exports = client;
