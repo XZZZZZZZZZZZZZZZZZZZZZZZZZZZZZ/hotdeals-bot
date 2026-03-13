@@ -1,11 +1,11 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
+const puppeteer = require("puppeteer");
 
 const client = new Client({
-  authStrategy: new LocalAuth({
-    dataPath: "./session"
-  }),
+  authStrategy: new LocalAuth(),
   puppeteer: {
+    executablePath: puppeteer.executablePath(),
     headless: true,
     args: [
       "--no-sandbox",
@@ -20,20 +20,12 @@ const client = new Client({
 });
 
 client.on("qr", (qr) => {
-  console.log("📱 סרוק את ה-QR:");
+  console.log("סרוק את ה-QR:");
   qrcode.generate(qr, { small: true });
 });
 
 client.on("ready", () => {
-  console.log("✅ וואטסאפ מחובר");
-});
-
-client.on("authenticated", () => {
-  console.log("🔐 התחברות הצליחה");
-});
-
-client.on("disconnected", () => {
-  console.log("❌ וואטסאפ התנתק");
+  console.log("וואטסאפ מחובר!");
 });
 
 client.initialize();
