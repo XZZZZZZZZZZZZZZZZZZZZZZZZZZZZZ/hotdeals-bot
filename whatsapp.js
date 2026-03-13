@@ -1,11 +1,9 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 
-let ready = false;
-
 const client = new Client({
   authStrategy: new LocalAuth({
-    clientId: "deals-bot"
+    dataPath: "./session"
   }),
   puppeteer: {
     headless: true,
@@ -16,41 +14,29 @@ const client = new Client({
       "--disable-accelerated-2d-canvas",
       "--no-first-run",
       "--no-zygote",
-      "--single-process"
+      "--single-process",
+      "--disable-gpu"
     ]
   }
 });
 
-client.on("qr", qr => {
-  console.log("סרוק את ה-QR כדי לחבר את WhatsApp:");
+client.on("qr", (qr) => {
+  console.log("סרוק את ה-QR הבא עם WhatsApp:");
   qrcode.generate(qr, { small: true });
 });
 
 client.on("ready", () => {
-  ready = true;
-  console.log("WhatsApp מחובר");
+  console.log("וואטסאפ מחובר!");
+});
+
+client.on("authenticated", () => {
+  console.log("התחברות הצליחה");
 });
 
 client.on("disconnected", () => {
-  ready = false;
-  console.log("WhatsApp התנתק");
+  console.log("וואטסאפ התנתק");
 });
 
 client.initialize();
 
-async function sendWhatsApp(message) {
-  if (!ready) {
-    console.log("WhatsApp עדיין לא מחובר");
-    return;
-  }
-
-  try {
-    const groupId = "PUT_GROUP_ID_HERE";
-    await client.sendMessage(groupId, message);
-    console.log("נשלח ל-WhatsApp");
-  } catch (err) {
-    console.log("שגיאה בשליחה ל-WhatsApp:", err.message);
-  }
-}
-
-module.exports = { sendWhatsApp };
+module.exports = client;
