@@ -6,38 +6,27 @@ const client = new Client({
     puppeteer: {
         headless: true,
         executablePath: '/usr/bin/google-chrome-stable',
-        protocolTimeout: 0,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
-            '--no-zygote',
-            '--single-process',
-            '--disable-setuid-sandbox',
-            '--no-first-run',
-            '--no-default-browser-check',
-            '--disable-extensions'
+            '--no-zygote'
         ],
     }
 });
 
 client.on('qr', (qr) => {
-    console.log('--- QR RECEIVED ---');
+    console.log('--- הנה הקוד! אם הוא נראה מפוזר, הקטן את המסך ---');
+    // הוספנו true כאן כדי להכריח את ה-QR להיות קטן וברור יותר
     qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', () => {
-    console.log('✅ וואטסאפ מחובר!');
+    console.log('✅ מחובר בהצלחה!');
 });
 
-// הוספת לוג כדי לראות איפה זה נתקע בדיוק
-console.log('1. מתחיל את תהליך האתחול...');
-
-client.initialize().then(() => {
-    console.log('2. האתחול הסתיים, מחכה ל-QR או לחיבור...');
-}).catch(err => {
-    console.error('❌ שגיאה באתחול:', err);
-});
+console.log('מנסה להפעיל את הדפדפן... המתן 2 דקות');
+client.initialize().catch(err => console.log('שגיאת אתחול:', err));
 
 module.exports = client;
