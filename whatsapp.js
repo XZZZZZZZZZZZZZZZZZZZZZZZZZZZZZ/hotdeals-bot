@@ -1,49 +1,56 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const { Client, LocalAuth } = require("whatsapp-web.js");
+const qrcode = require("qrcode-terminal");
+
+let ready = false;
 
 const client = new Client({
-    authStrategy: new LocalAuth(),
-    authTimeoutMs: 0, // מבטל את הגבלת זמן האימות
-    qrMaxRetries: 10,
-    puppeteer: {
-        headless: true,
-        executablePath: '/usr/bin/google-chrome-stable',
-        protocolTimeout: 0, // מבטל את הגבלת זמן התקשורת עם הדפדפן
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-zygote',
-            '--single-process',
-            '--disable-software-rasterizer',
-            '--disable-extensions',
-            '--memory-pressure-off'
-        ],
-    }
+  authStrategy: new LocalAuth({
+    clientId: "deals-bot"
+  }),
+  puppeteer: {
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--no-first-run",
+      "--no-zygote",
+      "--single-process"
+    ]
+  }
 });
 
-// הצגת ה-QR בצורה אופטימלית
-client.on('qr', (qr) => {
-    console.log('--- QR RECEIVED: סרוק עכשיו ---');
-    qrcode.generate(qr, { small: true });
+client.on("qr", qr => {
+  console.log("סרוק את ה-QR כדי לחבר את WhatsApp:");
+  qrcode.generate(qr, { small: true });
 });
 
-client.on('ready', () => {
-    console.log('✅ וואטסאפ מחובר ומוכן לעבודה!');
+client.on("ready", () => {
+  ready = true;
+  console.log("WhatsApp מחובר");
 });
 
-client.on('auth_failure', (msg) => {
-    console.error('❌ שגיאת אימות:', msg);
+client.on("disconnected", () => {
+  ready = false;
+  console.log("WhatsApp התנתק");
 });
 
-console.log('1. מתחיל את תהליך האתחול של הדפדפן...');
-console.log('2. בשרת איטי זה עשוי לקחת מספר דקות, אנא המתן בסבלנות.');
+client.initialize();
 
-client.initialize().catch(err => {
-    console.error('❌ שגיאה קריטית באתחול:', err.message);
-    // ניסיון אתחול חוזר אוטומטי במקרה של קריסה
-    setTimeout(() => client.initialize(), 10000);
-});
+async function sendWhatsApp(message) {
+  if (!ready) {
+    console.log("WhatsApp עדיין לא מחובר");
+    return;
+  }
 
-module.exports = client;
+  try {
+    const groupId = "PUT_GROUP_ID_HERE";
+    await client.sendMessage(groupId, message);
+    console.log("נשלח ל-WhatsApp");
+  } catch (err) {
+    console.log("שגיאה בשליחה ל-WhatsApp:", err.message);
+  }
+}
+
+module.exports = { sendWhatsApp };
