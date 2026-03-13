@@ -3,41 +3,47 @@ const qrcode = require('qrcode-terminal');
 
 const client = new Client({
     authStrategy: new LocalAuth(),
-    // הגדרה קריטית למניעת ה-Timeout שקרה לך
-    authTimeoutMs: 0, 
+    authTimeoutMs: 0, // מבטל את הגבלת זמן האימות
     qrMaxRetries: 10,
     puppeteer: {
         headless: true,
         executablePath: '/usr/bin/google-chrome-stable',
-        // ביטול הגבלת זמן לחלוטין
-        protocolTimeout: 0, 
+        protocolTimeout: 0, // מבטל את הגבלת זמן התקשורת עם הדפדפן
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--no-zygote',
-            '--single-process'
+            '--single-process',
+            '--disable-software-rasterizer',
+            '--disable-extensions',
+            '--memory-pressure-off'
         ],
     }
 });
 
+// הצגת ה-QR בצורה אופטימלית
 client.on('qr', (qr) => {
-    console.log('--- הקוד הגיע! סרוק עכשיו ---');
+    console.log('--- QR RECEIVED: סרוק עכשיו ---');
     qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', () => {
-    console.log('✅ וואטסאפ מחובר ומוכן!');
+    console.log('✅ וואטסאפ מחובר ומוכן לעבודה!');
 });
 
-// לוג כדי שנדע שהתהליך רץ ולא תקוע
-console.log('מנסה להפעיל את הדפדפן... זה יכול לקחת כמה דקות, אל תתייאש.');
+client.on('auth_failure', (msg) => {
+    console.error('❌ שגיאת אימות:', msg);
+});
+
+console.log('1. מתחיל את תהליך האתחול של הדפדפן...');
+console.log('2. בשרת איטי זה עשוי לקחת מספר דקות, אנא המתן בסבלנות.');
 
 client.initialize().catch(err => {
-    console.error('שגיאה באתחול (מנסה שוב...):', err.message);
-    // ניסיון אתחול חוזר במקרה של כישלון
-    setTimeout(() => client.initialize(), 5000);
+    console.error('❌ שגיאה קריטית באתחול:', err.message);
+    // ניסיון אתחול חוזר אוטומטי במקרה של קריסה
+    setTimeout(() => client.initialize(), 10000);
 });
 
 module.exports = client;
