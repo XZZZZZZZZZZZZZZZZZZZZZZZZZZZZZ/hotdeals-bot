@@ -11,30 +11,29 @@ const client = new Client({
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
-      "--disable-accelerated-2d-canvas",
+      "--disable-gpu",
       "--no-first-run",
       "--no-zygote",
-      "--single-process",
-      "--disable-gpu"
+      "--single-process"
     ]
   }
 });
 
 client.on("qr", (qr) => {
-  console.log("סרוק את ה-QR הבא עם WhatsApp:");
+  console.log("📱 סרוק את ה-QR:");
   qrcode.generate(qr, { small: true });
 });
 
 client.on("ready", () => {
-  console.log("וואטסאפ מחובר!");
+  console.log("✅ וואטסאפ מחובר");
 });
 
 client.on("authenticated", () => {
-  console.log("התחברות הצליחה");
+  console.log("🔐 התחברות הצליחה");
 });
 
 client.on("disconnected", () => {
-  console.log("וואטסאפ התנתק");
+  console.log("❌ וואטסאפ התנתק");
 });
 
 client.initialize();
