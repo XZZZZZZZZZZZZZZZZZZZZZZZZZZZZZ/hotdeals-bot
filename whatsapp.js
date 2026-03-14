@@ -42,3 +42,4 @@ cron.schedule('*/20 8-23 * * *', () => {
 whatsapp.on('ready', () => {
     fetchDeal();
 });
+module.exports = client;
