@@ -1,42 +1,44 @@
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const whatsapp = require('./whatsapp');
+const axios = require('axios');
+const cron = require('node-cron');
 
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    qrMaxRetries: 15,
-    authTimeoutMs: 90000, // הגדלנו לדקה וחצי כדי למנוע כשלים
-    puppeteer: {
-        executablePath: '/usr/bin/google-chrome-stable',
-        headless: true,
-        args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--no-zygote",
-            "--single-process"
-        ]
+// הגדרות
+const GROUP_ID = "YOUR_GROUP_ID_HERE"; // כאן תדביק את ה-ID שתקבל מהבוט
+const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
+const API_KEY = "987654321";
+
+async function fetchDeal() {
+    console.log("מבצע חיפוש דיל ושליחה...");
+    try {
+        // כאן הלוגיקה שלך למציאת מוצר (למשל מאליאקספרס)
+        const marketingText = "דיל חדש ומטורף! 🛍️";
+        const affiliateLink = "https://s.click.aliexpress.com/e/example";
+        
+        const fullMessage = `${marketingText}\n\n🛒 לרכישה: ${affiliateLink}`;
+
+        // 1. שליחה לאתר שלך
+        await axios.post(CHANNEL_API_URL, {
+            api_key: API_KEY,
+            content: fullMessage
+        });
+
+        // 2. שליחה לקבוצת הוואטסאפ (רק אם הגדרת ID)
+        if (GROUP_ID !== "YOUR_GROUP_ID_HERE") {
+            await whatsapp.sendMessage(GROUP_ID, fullMessage);
+            console.log("הדיל נשלח לוואטסאפ!");
+        }
+
+    } catch (error) {
+        console.error("שגיאה בשליחה:", error.message);
     }
+}
+
+// תזמון שליחה (כל 20 דקות)
+cron.schedule('*/20 8-23 * * *', () => {
+    fetchDeal();
 });
 
-client.on("qr", (qr) => {
-    // יצירת קישור נקי שנסרק בקלות
-    const cleanQRUrl = `https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${encodeURIComponent(qr)}`;
-    
-    console.log("\n--- צעד לחיבור הוואטסאפ ---");
-    console.log("1. פתח את הקישור הבא בדפדפן:");
-    console.log(cleanQRUrl);
-    console.log("2. סרוק את הקוד שמופיע שם מיד.");
-    console.log("---------------------------\n");
+// שליחה בבדיקה כשהבוט עולה
+whatsapp.on('ready', () => {
+    fetchDeal();
 });
-
-client.on("ready", () => {
-    console.log("✅ וואטסאפ מחובר בהצלחה!");
-});
-
-client.on("disconnected", (reason) => {
-    console.log("וואטסאפ התנתק:", reason);
-});
-
-client.initialize();
-
-module.exports = client;
