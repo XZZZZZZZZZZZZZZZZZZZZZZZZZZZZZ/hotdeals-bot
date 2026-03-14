@@ -3,6 +3,8 @@ const qrcode = require("qrcode-terminal");
 
 const client = new Client({
   authStrategy: new LocalAuth(),
+  qrMaxRetries: 10,
+  authTimeoutMs: 60000,
   puppeteer: {
     executablePath: '/usr/bin/google-chrome-stable',
     headless: true,
@@ -19,20 +21,23 @@ const client = new Client({
 });
 
 client.on("qr", (qr) => {
-  // זה הקישור שיצר לך תמונה אמיתית ונקייה של ה-QR
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
   
-  console.log("------------------------------------------");
-  console.log("סרוק את ה-QR מהקישור הבא:");
+  console.log("---------------------------------------------------------");
+  console.log("נא לסרוק את ה-QR מהקישור הבא (מומלץ!):");
   console.log(qrImageUrl);
-  console.log("------------------------------------------");
+  console.log("---------------------------------------------------------");
   
-  // משאיר את הישן רק לגיבוי למטה
+  // גיבוי של ה-QR בתוך הלוגים
   qrcode.generate(qr, { small: true });
 });
 
 client.on("ready", () => {
-  console.log("וואטסאפ מחובר בהצלחה!");
+  console.log("וואטסאפ מחובר בהצלחה ומוכן לעבודה!");
+});
+
+client.on("auth_failure", (msg) => {
+  console.error("שגיאת התחברות:", msg);
 });
 
 client.initialize();
