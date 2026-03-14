@@ -5,7 +5,8 @@ const puppeteer = require("puppeteer");
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    executablePath: puppeteer.executablePath(),
+    // התיקון הקריטי לשרת של Koyeb:
+    executablePath: '/usr/bin/google-chrome-stable',
     headless: true,
     args: [
       "--no-sandbox",
