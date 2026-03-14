@@ -4,6 +4,7 @@ const port = process.env.PORT || 8080;
 
 app.get('/', (req, res) => res.send('Bot is online!'));
 app.listen(port, () => console.log(`Listening on port ${port}`));
+
 const whatsapp = require('./whatsapp.js');
 process.env.TZ = "Asia/Jerusalem";
 
@@ -32,8 +33,8 @@ const TRACKING_ID = process.env.ALI_TRACKING_ID;
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
-// --- זה השינוי היחיד שנוסף לשרת Koyeb ---
-const DATA_DIR = "/data";
+// --- תיקון נתיב התיקייה ל-Koyeb כדי שלא תהיה שגיאת הרשאות ---
+const DATA_DIR = "./data"; 
 if (!fs.existsSync(DATA_DIR)) {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -41,7 +42,7 @@ if (!fs.existsSync(DATA_DIR)) {
     console.log("Error creating data dir:", e.message);
   }
 }
-const SENT_FILE = "/data/sent_products.json";
+const SENT_FILE = "./data/sent_products.json";
 // ----------------------------------------
 
 let sentProducts = new Set();
@@ -262,6 +263,7 @@ async function sendToChannel(text){
 }
 
 async function fetchDeal(){
+  console.log("🔍 מחפש דיל חדש...");
   const params = {
     app_key:APP_KEY,
     method:"aliexpress.affiliate.product.query",
@@ -374,7 +376,19 @@ ${marketingText}
 🛒 להזמנה:
 ${affiliateLink}`;
 
+    // שליחה ל-API
     await sendToChannel(messageText);
+
+    // שליחה לוואטסאפ (זכור להחליף את ה-ID כשיהיה לך)
+    const GROUP_ID = "YOUR_GROUP_ID_HERE@g.us"; 
+    if (whatsapp && GROUP_ID !== "YOUR_GROUP_ID_HERE@g.us") {
+        try {
+            await whatsapp.sendMessage(GROUP_ID, messageText);
+            console.log("🚀 נשלח לוואטסאפ בהצלחה!");
+        } catch (wErr) {
+            console.log("שגיאת וואטסאפ:", wErr.message);
+        }
+    }
 
   }
   catch(err){
@@ -387,6 +401,9 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-fetchDeal();
+whatsapp.on('ready', () => {
+    console.log("✅ הבוט מחובר ומוכן לעבודה!");
+    fetchDeal();
+});
 
 setInterval(()=>{},1000);
