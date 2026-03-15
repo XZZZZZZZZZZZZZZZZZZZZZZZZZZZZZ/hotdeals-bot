@@ -376,10 +376,8 @@ ${marketingText}
 🛒 להזמנה:
 ${affiliateLink}`;
 
-    // שליחה ל-API
     await sendToChannel(messageText);
 
-    // שליחה לוואטסאפ (זכור להחליף את ה-ID כשיהיה לך)
     const GROUP_ID = "YOUR_GROUP_ID_HERE@g.us"; 
     if (whatsapp && GROUP_ID !== "YOUR_GROUP_ID_HERE@g.us") {
         try {
@@ -401,8 +399,8 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-// הוספת הפונקציה למציאת ה-ID של הקבוצה
-whatsapp.on('message', async (msg) => {
+// התיקון היחיד: message -> message_create
+whatsapp.on('message_create', async (msg) => {
     if (msg.body === '!id') {
         const chat = await msg.getChat();
         console.log(`--- ה-ID של הצ'אט הזה הוא: ${chat.id._serialized} ---`);
