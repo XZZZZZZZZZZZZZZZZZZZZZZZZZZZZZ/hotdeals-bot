@@ -13,11 +13,9 @@ const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
 
-// --- מנגנון הגנה נגד קריסות (חשוב ל-Koyeb) ---
 process.on('unhandledRejection', (reason, promise) => {
   console.log('⚠️ שגיאה שנתפסה בחירום:', reason);
 });
-// ------------------------------------------
 
 let openai = null;
 
@@ -33,7 +31,6 @@ const TRACKING_ID = process.env.ALI_TRACKING_ID;
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
-// --- תיקון נתיב התיקייה ל-Koyeb כדי שלא תהיה שגיאת הרשאות ---
 const DATA_DIR = "./data"; 
 if (!fs.existsSync(DATA_DIR)) {
   try {
@@ -43,7 +40,6 @@ if (!fs.existsSync(DATA_DIR)) {
   }
 }
 const SENT_FILE = "./data/sent_products.json";
-// ----------------------------------------
 
 let sentProducts = new Set();
 
@@ -181,15 +177,12 @@ async function generateMarketingText(title,price){
 💰 מחיר: ₪${price}
 
 שווה לבדוק לפני שייגמר!
-
 `;
   }
 
   try{
     const prompt = `
 כתוב פוסט דילים בעברית בסגנון ערוצי דילים גדולים.
-
-מבנה חובה:
 
 🔥 דיל חדש! 🔥
 
@@ -199,10 +192,6 @@ async function generateMarketingText(title,price){
 
 🚀 יתרונות:
 4 יתרונות קצרים עם האימוג'י ✅
-
-משפט סיום קצר שמעודד קנייה.
-
-בסוף כתוב:
 
 💰 מחיר: ₪${price}
 
@@ -217,8 +206,9 @@ ${title}
         {role:"user",content:prompt}
       ],
       temperature:0.8,
-      max_tokens: 300
+      max_tokens:300
     });
+
     return completion.choices[0].message.content;
   }
   catch{
@@ -226,16 +216,7 @@ ${title}
 
 📦 ${title}
 
-מוצר שימושי במחיר משתלם.
-
-🚀 יתרונות:
-✅ איכות טובה
-✅ שימוש נוח
-✅ מתאים ליום יום
-✅ מחיר משתלם
-
 💰 מחיר: ₪${price}
-
 `;
   }
 }
@@ -253,8 +234,7 @@ async function sendToChannel(text){
         headers:{
           "Content-Type":"application/json",
           "X-API-Key":API_KEY
-        },
-        timeout: 10000
+        }
       }
     );
   } catch (err) {
@@ -263,7 +243,9 @@ async function sendToChannel(text){
 }
 
 async function fetchDeal(){
+
   console.log("🔍 מחפש דיל חדש...");
+
   const params = {
     app_key:APP_KEY,
     method:"aliexpress.affiliate.product.query",
@@ -284,10 +266,11 @@ async function fetchDeal(){
   params.sign = generateSign(params);
 
   try{
+
     const response =
     await axios.get(
       "https://api-sg.aliexpress.com/sync",
-      {params, timeout: 10000}
+      {params}
     );
 
     const products =
@@ -300,34 +283,17 @@ async function fetchDeal(){
 
     if(!products?.length) return;
 
-    const priceRanges = [
-      {min:5,max:250},
-      {min:1,max:270},
-      {min:0.5,max:200}
-    ];
-
     let selectedProduct = null;
     let affiliateLink = null;
 
     for(const product of products){
+
       if(sentProducts.has(product.product_id))
       continue;
 
-      const price =
-      extractLowestPrice(product);
+      const price = extractLowestPrice(product);
 
       if(!price) continue;
-
-      let valid = false;
-
-      for(const range of priceRanges){
-        if(price >= range.min && price <= range.max){
-          valid = true;
-          break;
-        }
-      }
-
-      if(!valid) continue;
 
       const link =
       await generateAffiliateLink(
@@ -339,14 +305,11 @@ async function fetchDeal(){
         affiliateLink = link;
         sentProducts.add(product.product_id);
 
-        try {
-          fs.writeFileSync(
-            SENT_FILE,
-            JSON.stringify([...sentProducts])
-          );
-        } catch (e) {
-          console.log("Error saving sent file:", e.message);
-        }
+        fs.writeFileSync(
+          SENT_FILE,
+          JSON.stringify([...sentProducts])
+        );
+
         break;
       }
     }
@@ -378,14 +341,23 @@ ${affiliateLink}`;
 
     await sendToChannel(messageText);
 
-    const GROUP_ID = "YOUR_GROUP_ID_HERE@g.us"; 
-    if (whatsapp && GROUP_ID !== "YOUR_GROUP_ID_HERE@g.us") {
-        try {
-            await whatsapp.sendMessage(GROUP_ID, messageText);
-            console.log("🚀 נשלח לוואטסאפ בהצלחה!");
-        } catch (wErr) {
-            console.log("שגיאת וואטסאפ:", wErr.message);
+    // שליחה לוואטסאפ לפי שם קבוצה
+    try {
+
+        const chats = await whatsapp.getChats();
+
+        const group =
+        chats.find(chat =>
+            chat.name === "דילים שפשוט חבל לפספס"
+        );
+
+        if(group){
+            await group.sendMessage(messageText);
+            console.log("🚀 נשלח לקבוצת וואטסאפ!");
         }
+
+    } catch (wErr) {
+        console.log("שגיאת וואטסאפ:", wErr.message);
     }
 
   }
@@ -399,17 +371,6 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-// הוצאת ID של קבוצה
-whatsapp.on('message', async (msg) => {
-    if (msg.body === '!id') {
-        const chat = await msg.getChat();
-        const id = chat.id._serialized;
-
-        console.log("Group ID:", id);
-
-        await msg.reply(`ה-ID של הקבוצה הוא:\n${id}`);
-    }
-});
 whatsapp.on('ready', () => {
     console.log("✅ הבוט מחובר ומוכן לעבודה!");
     fetchDeal();
