@@ -5,6 +5,7 @@ const port = process.env.PORT || 8080;
 app.get('/', (req, res) => res.send('Bot is online!'));
 app.listen(port, () => console.log(`Listening on port ${port}`));
 
+// ייבוא הבוט - וודא שבקובץ whatsapp.js אתה מייצא את ה-client
 const whatsapp = require('./whatsapp.js');
 process.env.TZ = "Asia/Jerusalem";
 
@@ -376,12 +377,14 @@ ${marketingText}
 🛒 להזמנה:
 ${affiliateLink}`;
 
-    // שליחה ל-API
+    // שליחה ל-API של האתר
     await sendToChannel(messageText);
 
     // שליחה לוואטסאפ (זכור להחליף את ה-ID כשיהיה לך)
     const GROUP_ID = "YOUR_GROUP_ID_HERE@g.us"; 
-    if (whatsapp && GROUP_ID !== "YOUR_GROUP_ID_HERE@g.us") {
+    
+    // בדיקה שהאובייקט קיים ושהמתודות שלו זמינות
+    if (whatsapp && typeof whatsapp.sendMessage === 'function' && GROUP_ID !== "YOUR_GROUP_ID_HERE@g.us") {
         try {
             await whatsapp.sendMessage(GROUP_ID, messageText);
             console.log("🚀 נשלח לוואטסאפ בהצלחה!");
@@ -401,6 +404,7 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
+// מוודא שהאירוע נתפס נכון בהתאם לייצוא ב-whatsapp.js
 whatsapp.on('ready', () => {
     console.log("✅ הבוט מחובר ומוכן לעבודה!");
     fetchDeal();
