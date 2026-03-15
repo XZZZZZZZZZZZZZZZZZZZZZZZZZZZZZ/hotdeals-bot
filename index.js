@@ -42,6 +42,7 @@ if (!fs.existsSync(DATA_DIR)) {
   }
 }
 const SENT_FILE = "./data/sent_products.json";
+
 let sentProducts = new Set();
 if (fs.existsSync(SENT_FILE)) {
   try {
@@ -159,31 +160,31 @@ async function generateAffiliateLink(originalUrl){
   }
 }
 
-async function generateMarketingText(title,price){
-  if(!openai){
-    return `🔥 דיל חדש! 🔥\n\n📦 ${title}\n\n💰 מחיר: ₪${price}`;
+async function generateMarketingText(title, price) {
+  if (!openai) {
+    return `🔥 ${title}\n\nמוצר מעולה במחיר מצוין!\n\n💰 מחיר: ₪${price}`;
   }
 
-  try{
-    const prompt = `כתוב פוסט שיווקי אטרקטיבי לערוץ דילים עבור המוצר הבא:
-שם: ${title}
-מחיר: ₪${price}
-השתמש באימוג'ים, כתוב בנקודות (✅) את היתרונות, וסיים בקריאה לפעולה.`;
+  try {
+    const prompt = `כתוב פוסט שיווקי אטרקטיבי למוצר הבא לפי המבנה הזה בדיוק:
+    1. כותרת/שם המוצר.
+    2. תיאור קצר על המוצר.
+    3. רשימה של 4 יתרונות מרכזיים (השתמש ב-✅).
+    4. מילה אחת או משפט קצר ומעניין שיוסיף עניין.
+    5. מחיר: ₪${price}
+    
+    פרטי המוצר: ${title}`;
 
-    const completion =
-    await openai.chat.completions.create({
-      model:"gpt-4o-mini",
-      messages:[
-        {role:"user",content:prompt}
-      ],
-      temperature:0.8,
-      max_tokens:300
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8,
+      max_tokens: 400
     });
 
     return completion.choices[0].message.content;
-  }
-  catch{
-    return `🔥 דיל חדש! 🔥\n\n📦 ${title}\n\n💰 מחיר: ₪${price}`;
+  } catch (err) {
+    return `🔥 ${title}\n\n💰 מחיר: ₪${price}`;
   }
 }
 
@@ -203,7 +204,7 @@ async function sendToChannel(text){
         }
       }
     );
-    console.log("✅ נשלח לערוץ ה-API בהצלחה!");
+    console.log("✅ נשלח לערוץ ה-API!");
   } catch (err) {
     console.log("❌ שגיאה בשליחה ל-API:", err.message);
   }
@@ -290,23 +291,21 @@ async function fetchDeal(){
     await translateTitle(selectedProduct.product_title);
 
     const marketingText =
-    await generateMarketingText(translatedTitle,finalPrice);
+    await generateMarketingText(translatedTitle, finalPrice);
 
     const resizedImage =
     `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://","")}`;
 
     const messageText = `![](${resizedImage})\n\n${marketingText}\n\n🛒 להזמנה:\n${affiliateLink}`;
 
-    // שליחה לערוץ האתר תמיד
     await sendToChannel(messageText);
 
-    // שליחה לוואטסאפ רק אם הקבוצה זוהתה
     if (whatsappReady && targetGroupId) {
         try {
             await whatsapp.sendMessage(targetGroupId, messageText);
-            console.log("🚀 נשלח לקבוצת וואטסאפ!");
+            console.log("🚀 נשלח לוואטסאפ!");
         } catch (wErr) {
-            console.log("⚠️ שגיאה בשליחה לוואטסאפ:", wErr.message);
+            console.log("⚠️ שגיאת וואטסאפ:", wErr.message);
         }
     }
 
@@ -316,26 +315,25 @@ async function fetchDeal(){
   }
 }
 
-// לוח זמנים
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
 cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-// מנגנון זיהוי הקבוצה לפי הודעה
 whatsapp.on('message', async (msg) => {
+    console.log(`📩 הודעה מ: ${msg.from} | תוכן: ${msg.body}`);
+
     if (msg.body === '!בוט תתחבר') {
         targetGroupId = msg.from;
         whatsappReady = true;
-        console.log(`🎯 ה-ID נתפס בהצלחה: ${targetGroupId}`);
-        await msg.reply('✅ הקבוצה זוהתה! מעכשיו הדילים יישלחו לכאן באופן אוטומטי.');
-        fetchDeal(); // הרצה מיידית לאחר הזיהוי
+        console.log(`🎯 ה-ID נתפס: ${targetGroupId}`);
+        await msg.reply(`✅ הקבוצה זוהתה! ה-ID הוא: ${targetGroupId}`);
+        fetchDeal(); 
     }
 });
 
-whatsapp.on('ready', async () => {
-    console.log("✅ הבוט מחובר! עכשיו כתוב '!בוט תתחבר' בקבוצה בוואטסאפ.");
-    // שליחה ראשונה לערוץ ה-API מיד בחיבור
+whatsapp.on('ready', () => {
+    console.log("✅ הבוט מחובר! עכשיו כתוב '!בוט תתחבר' בקבוצה.");
     fetchDeal(); 
 });
 
