@@ -399,15 +399,17 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-// התיקון היחיד: message -> message_create
-whatsapp.on('message_create', async (msg) => {
+// הוצאת ID של קבוצה
+whatsapp.on('message', async (msg) => {
     if (msg.body === '!id') {
         const chat = await msg.getChat();
-        console.log(`--- ה-ID של הצ'אט הזה הוא: ${chat.id._serialized} ---`);
-        await whatsapp.sendMessage(msg.from, `ה-ID של הקבוצה הזו הוא:\n${chat.id._serialized}`);
+        const id = chat.id._serialized;
+
+        console.log("Group ID:", id);
+
+        await msg.reply(`ה-ID של הקבוצה הוא:\n${id}`);
     }
 });
-
 whatsapp.on('ready', () => {
     console.log("✅ הבוט מחובר ומוכן לעבודה!");
     fetchDeal();
