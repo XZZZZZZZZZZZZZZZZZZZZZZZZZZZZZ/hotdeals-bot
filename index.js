@@ -17,6 +17,8 @@ process.on('unhandledRejection', (reason, promise) => {
   console.log('⚠️ שגיאה שנתפסה בחירום:', reason);
 });
 
+let whatsappReady = false;
+
 let openai = null;
 
 if (process.env.OPENAI_API_KEY) {
@@ -182,21 +184,13 @@ async function generateMarketingText(title,price){
 
   try{
     const prompt = `
-כתוב פוסט דילים בעברית בסגנון ערוצי דילים גדולים.
+כתוב פוסט דילים בעברית.
 
 🔥 דיל חדש! 🔥
 
-📦 שם המוצר
-
-משפט קצר שמסביר מה המוצר עושה.
-
-🚀 יתרונות:
-4 יתרונות קצרים עם האימוג'י ✅
+📦 ${title}
 
 💰 מחיר: ₪${price}
-
-שם המוצר:
-${title}
 `;
 
     const completion =
@@ -341,19 +335,22 @@ ${affiliateLink}`;
 
     await sendToChannel(messageText);
 
-    // שליחה לוואטסאפ לפי שם קבוצה
     try {
 
-        const chats = await whatsapp.getChats();
+        if (whatsappReady) {
 
-        const group =
-        chats.find(chat =>
-            chat.name === "דילים שפשוט חבל לפספס"
-        );
+            const chats = await whatsapp.getChats();
 
-        if(group){
-            await group.sendMessage(messageText);
-            console.log("🚀 נשלח לקבוצת וואטסאפ!");
+            const group =
+            chats.find(chat =>
+                chat.name === "דילים שפשוט חבל לפספס"
+            );
+
+            if(group){
+                await group.sendMessage(messageText);
+                console.log("🚀 נשלח לקבוצת וואטסאפ!");
+            }
+
         }
 
     } catch (wErr) {
@@ -373,6 +370,7 @@ cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
 whatsapp.on('ready', () => {
     console.log("✅ הבוט מחובר ומוכן לעבודה!");
+    whatsappReady = true;
     fetchDeal();
 });
 
