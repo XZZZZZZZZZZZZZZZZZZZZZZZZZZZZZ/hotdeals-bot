@@ -18,10 +18,9 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 let whatsappReady = false;
-let targetGroupId = null; // משתנה לשמירת ה-ID כדי למנוע קריסות
+let targetGroupId = null; 
 
 let openai = null;
-
 if (process.env.OPENAI_API_KEY) {
   const OpenAI = require("openai");
   openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -43,9 +42,7 @@ if (!fs.existsSync(DATA_DIR)) {
   }
 }
 const SENT_FILE = "./data/sent_products.json";
-
 let sentProducts = new Set();
-
 if (fs.existsSync(SENT_FILE)) {
   try {
     const data = JSON.parse(fs.readFileSync(SENT_FILE));
@@ -99,7 +96,7 @@ function generateSign(params){
 }
 
 function extractLowestPrice(product){
-  let price = product.target_app_sale_price;
+  let price = product.target_app_sale_price || product.target_sale_price;
   if(!price) return 0;
   price = price.toString();
   if(price.includes("-")){
@@ -158,14 +155,13 @@ async function generateAffiliateLink(originalUrl){
     ?.promotion_link?.[0]
     ?.promotion_link || null;
   } catch (err) {
-    console.log("Error generating affiliate link:", err.message);
     return null;
   }
 }
 
 async function generateMarketingText(title,price){
   if(!openai){
-    return `🔥 דיל חדש! 🔥\n\n📦 ${title}\n\nמוצר שימושי במחיר מצוין שכדאי לבדוק.\n\n💰 מחיר: ₪${price}`;
+    return `🔥 דיל חדש! 🔥\n\n📦 ${title}\n\n💰 מחיר: ₪${price}`;
   }
 
   try{
@@ -207,8 +203,9 @@ async function sendToChannel(text){
         }
       }
     );
+    console.log("✅ נשלח לערוץ ה-API בהצלחה!");
   } catch (err) {
-    console.log("Error sending to channel API:", err.message);
+    console.log("❌ שגיאה בשליחה ל-API:", err.message);
   }
 }
 
@@ -296,24 +293,21 @@ async function fetchDeal(){
     await generateMarketingText(translatedTitle,finalPrice);
 
     const resizedImage =
-`https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://","")}`;
+    `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://","")}`;
 
     const messageText = `![](${resizedImage})\n\n${marketingText}\n\n🛒 להזמנה:\n${affiliateLink}`;
 
-    // --- קודם כל שליחה לערוץ האתר ---
-    console.log("📤 שולח לערוץ ה-API...");
+    // שליחה לערוץ האתר תמיד
     await sendToChannel(messageText);
 
-    // --- אחר כך לוואטסאפ (בתוך Try/Catch נפרד) ---
-    try {
-        if (whatsappReady && targetGroupId) {
+    // שליחה לוואטסאפ רק אם הקבוצה זוהתה
+    if (whatsappReady && targetGroupId) {
+        try {
             await whatsapp.sendMessage(targetGroupId, messageText);
             console.log("🚀 נשלח לקבוצת וואטסאפ!");
-        } else {
-            console.log("ℹ️ וואטסאפ עדיין לא מוכן או קבוצה לא נמצאה.");
+        } catch (wErr) {
+            console.log("⚠️ שגיאה בשליחה לוואטסאפ:", wErr.message);
         }
-    } catch (wErr) {
-        console.log("שגיאת וואטסאפ:", wErr.message);
     }
 
   }
@@ -322,27 +316,27 @@ async function fetchDeal(){
   }
 }
 
+// לוח זמנים
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
 cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-whatsapp.on('ready', async () => {
-    console.log("✅ הבוט מחובר!");
-    try {
-        const chats = await whatsapp.getChats();
-        const group = chats.find(chat => chat.name === "דילים שפשוט חבל לפספס");
-        if (group) {
-            targetGroupId = group.id._serialized;
-            console.log(`🎯 נמצאה קבוצה: ${targetGroupId}`);
-            whatsappReady = true;
-            fetchDeal(); // הרצה ראשונה מיד בחיבור
-        } else {
-            console.log("❌ קבוצה לא נמצאה.");
-        }
-    } catch (e) {
-        console.log("שגיאה במציאת קבוצה:", e.message);
+// מנגנון זיהוי הקבוצה לפי הודעה
+whatsapp.on('message', async (msg) => {
+    if (msg.body === '!בוט תתחבר') {
+        targetGroupId = msg.from;
+        whatsappReady = true;
+        console.log(`🎯 ה-ID נתפס בהצלחה: ${targetGroupId}`);
+        await msg.reply('✅ הקבוצה זוהתה! מעכשיו הדילים יישלחו לכאן באופן אוטומטי.');
+        fetchDeal(); // הרצה מיידית לאחר הזיהוי
     }
+});
+
+whatsapp.on('ready', async () => {
+    console.log("✅ הבוט מחובר! עכשיו כתוב '!בוט תתחבר' בקבוצה בוואטסאפ.");
+    // שליחה ראשונה לערוץ ה-API מיד בחיבור
+    fetchDeal(); 
 });
 
 setInterval(()=>{},1000);
