@@ -12,7 +12,6 @@ const client = new Client({
             '--disable-extensions'
         ],
     },
-    // תיקון קריטי לשגיאות Timeout בשרת
     authTimeoutMs: 60000,
     qrMaxRetries: 10,
     takeoverOnConflict: true,
@@ -20,8 +19,15 @@ const client = new Client({
 });
 
 client.on('qr', (qr) => {
+    // מדפיס לטרמינל ליתר ביטחון
     qrcode.generate(qr, { small: true });
-    console.log('--- סרוק את הקוד כדי להתחבר ---');
+    
+    // מייצר קישור חיצוני שניתן לסרוק בקלות מהדפדפן
+    const qrLink = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}`;
+    console.log('--------------------------------------------------');
+    console.log('🔗 קישור לסריקת ה-QR (תעתיק ותדביק בדפדפן):');
+    console.log(qrLink);
+    console.log('--------------------------------------------------');
 });
 
 client.initialize();
