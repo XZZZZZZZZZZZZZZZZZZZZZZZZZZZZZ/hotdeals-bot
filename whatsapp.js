@@ -5,7 +5,8 @@ const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
     headless: true,
-    protocolTimeout: 120000,
+    protocolTimeout: 300000,
+    timeout: 300000,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -21,16 +22,17 @@ const client = new Client({
 
 client.on('qr', (qr) => {
 
-  // הדפסת ה-QR בטרמינל
+  // הדפסת QR בטרמינל
   qrcode.generate(qr, { small: true });
 
-  // קישור ל-QR בדפדפן
-  const qrLink = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
+  // קישור לסריקה בדפדפן
+  const qrLink =
+    `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`;
 
-  console.log('--------------------------------------------------');
+  console.log('------------------------------------');
   console.log('🔗 קישור לסריקה נוחה בדפדפן:');
   console.log(qrLink);
-  console.log('--------------------------------------------------');
+  console.log('------------------------------------');
 
 });
 
