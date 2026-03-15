@@ -12,20 +12,17 @@ const client = new Client({
             '--disable-extensions'
         ],
     },
-    authTimeoutMs: 60000,
+    authTimeoutMs: 120000, // הגדלתי ל-2 דקות
     qrMaxRetries: 10,
     takeoverOnConflict: true,
-    protocolTimeout: 60000 
+    protocolTimeout: 120000 // התיקון הקריטי לשגיאה שראית
 });
 
 client.on('qr', (qr) => {
-    // מדפיס לטרמינל ליתר ביטחון
     qrcode.generate(qr, { small: true });
-    
-    // מייצר קישור חיצוני שניתן לסרוק בקלות מהדפדפן
     const qrLink = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}`;
     console.log('--------------------------------------------------');
-    console.log('🔗 קישור לסריקת ה-QR (תעתיק ותדביק בדפדפן):');
+    console.log('🔗 קישור לסריקה:');
     console.log(qrLink);
     console.log('--------------------------------------------------');
 });
