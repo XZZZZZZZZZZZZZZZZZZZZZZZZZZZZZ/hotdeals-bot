@@ -166,12 +166,12 @@ async function generateMarketingText(title, price) {
   }
 
   try {
-    const prompt = `כתוב פוסט שיווקי אטרקטיבי למוצר הבא לפי המבנה הזה בדיוק:
-    1. כותרת/שם המוצר.
-    2. תיאור קצר על המוצר.
-    3. רשימה של 4 יתרונות מרכזיים (השתמש ב-✅).
-    4. מילה אחת או משפט קצר ומעניין שיוסיף עניין.
-    5. מחיר: ₪${price}
+    const prompt = `כתוב פוסט שיווקי אטרקטיבי, מלא באימוג'ים מתאימים בכל שורה, לפי המבנה הזה בדיוק:
+    1. כותרת/שם המוצר (עם אימוג'י בולט).
+    2. תיאור קצר ומעניין על המוצר (עם אימוג'ים רלוונטיים).
+    3. רשימה של 4 יתרונות מרכזיים (השתמש ב-✅ או אימוג'ים אחרים).
+    4. מילה אחת או משפט קצר ומפתיע שיוסיף עניין וכיף.
+    5. מחיר: ₪${price} (הוסף אימוג'י של כסף).
     
     פרטי המוצר: ${title}`;
 
@@ -179,7 +179,7 @@ async function generateMarketingText(title, price) {
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.8,
-      max_tokens: 400
+      max_tokens: 450
     });
 
     return completion.choices[0].message.content;
@@ -330,9 +330,15 @@ whatsapp.on('message', async (msg) => {
         await msg.reply(`✅ הקבוצה זוהתה! ה-ID הוא: ${targetGroupId}`);
         fetchDeal(); 
     }
+
+    if (msg.body === '!כאן') {
+        console.log(`📌 ה-ID של הקבוצה הזו הוא: ${msg.from}`);
+        await msg.reply(`ה-ID של הקבוצה הזו הוא: ${msg.from}`);
+    }
 });
 
 whatsapp.on('ready', () => {
+    whatsappReady = true;
     console.log("✅ הבוט מחובר! עכשיו כתוב '!בוט תתחבר' בקבוצה.");
     fetchDeal(); 
 });
