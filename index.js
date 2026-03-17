@@ -251,3 +251,6 @@ whatsapp.on('ready', async () => {
 });
 
 setInterval(() => {}, 1000); // שמירה על ה-Process פעיל
+whatsapp.on('message', msg => {
+    console.log(`📩 הודעה חדשה מ: ${msg.from}`);
+});
