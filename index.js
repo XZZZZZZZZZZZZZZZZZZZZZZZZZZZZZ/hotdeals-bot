@@ -230,6 +230,14 @@ cron.schedule("*/20 0-0 * * 0", fetchDeal);    // מוצ"ש (חצות עד 01:00
 whatsapp.on('ready', async () => {
     whatsappReady = true;
     console.log("✅ וואטסאפ מחובר ומוכן!");
+    
+    // בדיקה: שליחת הודעה מידית ברגע החיבור
+    if (targetGroupId) {
+        try {
+            await whatsapp.sendMessage(targetGroupId, "הבוט התחבר בהצלחה! אם אתה רואה את זה - השליחה עובדת.");
+            console.log("🚀 הודעת בדיקה נשלחה לקבוצה!");
+        } catch (err) {
+            console.log("❌ שגיאה בשליחת הודעת בדיקה:", err.message);
+        }
+    }
 });
-
-// סוף הקובץ
