@@ -230,3 +230,6 @@ cron.schedule("*/20 0-0 * * 0", fetchDeal);    // מוצ"ש (חצות עד 01:00
 whatsapp.on('ready', async () => {
     whatsappReady = true;
     console.log("✅ וואטסאפ מחובר ומוכן!");
+});
+
+// סוף הקובץ
