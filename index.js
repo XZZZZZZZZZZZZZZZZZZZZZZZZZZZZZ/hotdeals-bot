@@ -206,14 +206,21 @@ async function fetchDeal(){
         // שליחה ל-API
         await axios.post(CHANNEL_API_URL, { text: messageText, author: "Deals Bot", timestamp: new Date().toISOString() }, { headers: { "X-API-Key": API_KEY } }).catch(e => {});
         
-        // שליחה לוואטסאפ
+// שליחה לוואטסאפ
         if (whatsappReady && targetGroupId) {
-            await whatsapp.sendMessage(targetGroupId, messageText).then(() => console.log("🚀 נשלח לוואטסאפ!")).catch(e => console.log("WhatsApp Send Error"));
+            try {
+                await whatsapp.sendMessage(targetGroupId, messageText);
+                console.log("🚀 נשלח לוואטסאפ בהצלחה!");
+            } catch (whatsappError) {
+                console.log("❌ WhatsApp Send Error:", whatsappError.message);
+            }
+        } else {
+            console.log("⚠️ וואטסאפ לא מוכן או שחסר ID של קבוצה בשורה 27");
         }
-    } catch(err) { console.log("[Error] Fetch failed"); }
-}
-
-// --- מערכת 11: תזמון (Cron) ---
+    } catch (error) {
+        console.log("❌ שגיאה כללית באחזור הדיל:", error.message);
+    }
+}// --- מערכת 11: תזמון (Cron) ---
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal); // א-ה (8 עד חצות)
 cron.schedule("*/20 8-14 * * 5", fetchDeal);   // שישי (8 עד 15)
 cron.schedule("*/20 22-23 * * 6", fetchDeal);  // מוצ"ש (22 עד חצות)
