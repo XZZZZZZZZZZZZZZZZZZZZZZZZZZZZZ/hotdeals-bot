@@ -251,13 +251,3 @@ whatsapp.on('ready', async () => {
 });
 
 setInterval(() => {}, 1000); // שמירה על ה-Process פעיל
-// --- זיהוי ID של קבוצה לפי הודעה ממך ---
-whatsapp.on('message_create', (msg) => {
-    // בודק הודעות שאתה שולח (fromMe)
-    if (msg.fromMe) {
-        console.log("------------------------------------");
-        console.log(`📩 תוכן הודעה: ${msg.body}`);
-        console.log(`🆔 ה-ID של הצ'אט: ${msg.to}`);
-        console.log("------------------------------------");
-    }
-});
