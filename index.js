@@ -230,30 +230,3 @@ cron.schedule("*/20 0-0 * * 0", fetchDeal);    // מוצ"ש (חצות עד 01:00
 whatsapp.on('ready', async () => {
     whatsappReady = true;
     console.log("✅ וואטסאפ מחובר ומוכן!");
-    
-    // מחכים 5 שניות כדי שהצ'אטים יספיקו להיטען מהטלפון
-    console.log("⏳ ממתין לסנכרון קבוצות...");
-    setTimeout(async () => {
-        try {
-            const chats = await whatsapp.getChats();
-            const groups = chats.filter(chat => chat.isGroup);
-            
-            if (groups.length === 0) {
-                console.log("❌ לא נמצאו קבוצות פעילות. נסה לשלוח הודעה בקבוצה כדי שתקפוץ לראש הרשימה.");
-            } else {
-                console.log("====================================");
-                console.log("📋 רשימת קבוצות למציאת ID:");
-                groups.slice(0, 15).forEach(g => {
-                    console.log(`📌 ${g.name} | ID: ${g.id._serialized}`);
-                });
-                console.log("====================================");
-            }
-        } catch (error) {
-            console.log("❌ שגיאה עדיין קיימת באחזור קבוצות. נסה להפעיל מחדש (Restart).");
-        }
-    }, 5000); // 5 שניות המתנה
-
-    fetchDeal(); 
-});
-
-setInterval(() => {}, 1000); // שמירה על ה-Process פעיל
