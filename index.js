@@ -251,6 +251,11 @@ whatsapp.on('ready', async () => {
 });
 
 setInterval(() => {}, 1000); // שמירה על ה-Process פעיל
-whatsapp.on('message', msg => {
-    console.log(`📩 הודעה חדשה מ: ${msg.from}`);
+whatsapp.on('message', async (msg) => {
+    try {
+        const chat = await msg.getChat();
+        console.log(`📩 הודעה מ: ${chat.name} | תוכן: ${msg.body} | ID: ${msg.from}`);
+    } catch (e) {
+        console.log(`📩 הודעה חדשה מ: ${msg.from}`);
+    }
 });
