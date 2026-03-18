@@ -251,18 +251,13 @@ whatsapp.on('ready', async () => {
 });
 
 setInterval(() => {}, 1000); // שמירה על ה-Process פעיל
-whatsapp.on('message_create', async (msg) => {
-    // אנחנו בודקים רק הודעות שיוצאות ממך (מהטלפון שלך)
-    if (msg.fromMe && msg.body.includes("זה הקוד")) {
-        try {
-            const chat = await msg.getChat();
-            console.log("************************************");
-            console.log(`✅ מצאתי את הקבוצה שחיפשת!`);
-            console.log(`📌 שם הקבוצה: ${chat.name}`);
-            console.log(`🆔 ה-ID להעתקה: ${chat.id._serialized}`);
-            console.log("************************************");
-        } catch (e) {
-            console.log("❌ שגיאה בשליפת שם הקבוצה, נסה שוב.");
-        }
+// --- זיהוי ID של קבוצה לפי הודעה ממך ---
+whatsapp.on('message_create', (msg) => {
+    // בודק הודעות שאתה שולח (fromMe)
+    if (msg.fromMe) {
+        console.log("------------------------------------");
+        console.log(`📩 תוכן הודעה: ${msg.body}`);
+        console.log(`🆔 ה-ID של הצ'אט: ${msg.to}`);
+        console.log("------------------------------------");
     }
 });
