@@ -24,7 +24,7 @@ let whatsappReady = false;
 
 // --- מערכת 3: זיהוי קבוצה (ID) ---
 // כאן תכניס את ה-ID שתקבל מהלוגים ברגע שהבוט יתחבר
-let targetGroupId = null; 
+let targetGroupId = 120363407216029255
 
 // --- מערכת 4: בינה מלאכותית (OpenAI) ---
 let openai = null;
