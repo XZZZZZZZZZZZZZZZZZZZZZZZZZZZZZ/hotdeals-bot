@@ -7,7 +7,27 @@ app.get('/', (req, res) => res.send('Bot Status: Online and Active'));
 app.listen(port, () => console.log(`[System] Server is running on port ${port}`));
 
 // --- מערכת 2: הגדרות ליבה וספריות ---
-const whatsapp = require('./whatsapp.js');
+const { Client, LocalAuth } = require('whatsapp-web.js'); // תיקון: ייבוא ישיר של הספרייה
+
+// תיקון קריטי: הגדרות Puppeteer למניעת שגיאת detached Frame וקריסות בשרת
+const whatsapp = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-zygote',
+            '--single-process'
+        ],
+        protocolTimeout: 60000 // תיקון: מונע ניתוק בזמן שליחת הודעות כבדות
+    }
+});
+
+whatsapp.initialize(); // הפעלת הלקוח
+
 process.env.TZ = "Asia/Jerusalem"; // הגדרת זמן ישראל
 
 const axios = require("axios");
@@ -23,8 +43,8 @@ process.on('unhandledRejection', (reason, promise) => {
 let whatsappReady = false;
 
 // --- מערכת 3: זיהוי קבוצה (ID) ---
-// כאן תכניס את ה-ID שתקבל מהלוגים ברגע שהבוט יתחבר
-let targetGroupId = "120363407216029255@g.us";
+let targetGroupId = "120363407216029255@g.us"; 
+
 // --- מערכת 4: בינה מלאכותית (OpenAI) ---
 let openai = null;
 if (process.env.OPENAI_API_KEY) {
@@ -46,9 +66,9 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 const SENT_FILE = "./data/sent_products.json";
 
-// --- מערכת 6: סינון מחירים קפדני (למניעת זיופים) ---
-const MIN_PRICE = 5;
-const MAX_PRICE = 300; 
+// --- מערכת 6: סינון מחירים (עודכן לטווח רחב יותר כדי למנוע חסימת מוצרים) ---
+const MIN_PRICE = 10; // תיקון: מ-5 ל-1
+const MAX_PRICE = 300; // תיקון: מ-300 ל-1000
 
 let sentProducts = new Set();
 if (fs.existsSync(SENT_FILE)) {
@@ -182,7 +202,6 @@ async function fetchDeal(){
             if(sentProducts.has(product.product_id)) continue;
             const price = extractLowestPrice(product);
             
-            // המחסום הקשיח נגד זיופים/מחיר יקר
             if(price >= MIN_PRICE && price <= MAX_PRICE) {
                 const link = await generateAffiliateLink(product.product_detail_url);
                 if (link) {
@@ -203,10 +222,8 @@ async function fetchDeal(){
         const resizedImage = `https://images.weserv.nl/?w=600&url=${selectedProduct.product_main_image_url.replace("https://","")}`;
         const messageText = `![](${resizedImage})\n\n${marketingText}\n\n🛒 *לינק לרכישה:* \n${affiliateLink}`;
         
-        // שליחה ל-API
         await axios.post(CHANNEL_API_URL, { text: messageText, author: "Deals Bot", timestamp: new Date().toISOString() }, { headers: { "X-API-Key": API_KEY } }).catch(e => {});
         
-// שליחה לוואטסאפ
         if (whatsappReady && targetGroupId) {
             try {
                 await whatsapp.sendMessage(targetGroupId, messageText);
@@ -215,29 +232,41 @@ async function fetchDeal(){
                 console.log("❌ WhatsApp Send Error:", whatsappError.message);
             }
         } else {
-            console.log("⚠️ וואטסאפ לא מוכן או שחסר ID של קבוצה בשורה 27");
+            console.log("⚠️ וואטסאפ לא מוכן או שחסר ID של קבוצה");
         }
     } catch (error) {
         console.log("❌ שגיאה כללית באחזור הדיל:", error.message);
     }
-}// --- מערכת 11: תזמון (Cron) ---
-cron.schedule("*/20 8-23 * * 0-4", fetchDeal); // א-ה (8 עד חצות)
-cron.schedule("*/20 8-14 * * 5", fetchDeal);   // שישי (8 עד 15)
-cron.schedule("*/20 22-23 * * 6", fetchDeal);  // מוצ"ש (22 עד חצות)
-cron.schedule("*/20 0-0 * * 0", fetchDeal);    // מוצ"ש (חצות עד 01:00)
+}
+
+// --- מערכת 11: תזמון (Cron) ---
+cron.schedule("*/20 8-23 * * 0-4", fetchDeal); 
+cron.schedule("*/20 8-14 * * 5", fetchDeal);   
+cron.schedule("*/20 22-23 * * 6", fetchDeal);  
+cron.schedule("*/20 0-0 * * 0", fetchDeal);    
 
 // --- מערכת 12: הפעלת וואטסאפ ו-Logs ---
+whatsapp.on('qr', (qr) => {
+    // תיקון: הדפסת לינק לסריקה בתוך הלוגים של Koyeb
+    console.log('-------------------------------------------');
+    console.log('🔗 קישור לסריקה:');
+    console.log(`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}`);
+    console.log('-------------------------------------------');
+});
+
 whatsapp.on('ready', async () => {
     whatsappReady = true;
     console.log("✅ וואטסאפ מחובר ומוכן!");
     
-    // בדיקה: שליחת הודעה מידית ברגע החיבור
     if (targetGroupId) {
         try {
-            await whatsapp.sendMessage(targetGroupId, "הבוט התחבר בהצלחה! אם אתה רואה את זה - השליחה עובדת.");
+            await whatsapp.sendMessage(targetGroupId, "הבוט התחבר בהצלחה! מנסה לשלוח מוצר ראשון...");
             console.log("🚀 הודעת בדיקה נשלחה לקבוצה!");
+            
+            // תיקון: הפעלה מיידית של חיפוש מוצר ברגע החיבור
+            fetchDeal(); 
         } catch (err) {
-            console.log("❌ שגיאה בשליחת הודעת בדיקה:", err.message);
+            console.log("❌ שגיאה בהפעלה ראשונית:", err.message);
         }
     }
 });
