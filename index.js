@@ -7,7 +7,7 @@ app.get('/', (req, res) => res.send('Bot Status: Online and Active'));
 app.listen(port, () => console.log(`[System] Server is running on port ${port}`));
 
 // --- מערכת 2: הגדרות ליבה וספריות ---
-const { Client, LocalAuth } = require('whatsapp-web.js'); // תיקון: ייבוא ישיר של הספרייה
+const { Client, LocalAuth } = require('whatsapp-web.js');
 
 // תיקון קריטי: הגדרות Puppeteer למניעת שגיאת detached Frame וקריסות בשרת
 const whatsapp = new Client({
@@ -25,8 +25,6 @@ const whatsapp = new Client({
         protocolTimeout: 60000 // תיקון: מונע ניתוק בזמן שליחת הודעות כבדות
     }
 });
-
-whatsapp.initialize(); // הפעלת הלקוח
 
 process.env.TZ = "Asia/Jerusalem"; // הגדרת זמן ישראל
 
@@ -66,9 +64,9 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 const SENT_FILE = "./data/sent_products.json";
 
-// --- מערכת 6: סינון מחירים (עודכן לטווח רחב יותר כדי למנוע חסימת מוצרים) ---
-const MIN_PRICE = 10 // תיקון: מ-5 ל-10
-const MAX_PRICE = 250; // תיקון: מ-300 ל-250
+// --- מערכת 6: סינון מחירים ---
+const MIN_PRICE = 10;
+const MAX_PRICE = 250;
 
 let sentProducts = new Set();
 if (fs.existsSync(SENT_FILE)) {
@@ -247,7 +245,6 @@ cron.schedule("*/20 0-0 * * 0", fetchDeal);
 
 // --- מערכת 12: הפעלת וואטסאפ ו-Logs ---
 whatsapp.on('qr', (qr) => {
-    // תיקון: הדפסת לינק לסריקה בתוך הלוגים של Koyeb
     console.log('-------------------------------------------');
     console.log('🔗 קישור לסריקה:');
     console.log(`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}`);
@@ -263,10 +260,12 @@ whatsapp.on('ready', async () => {
             await whatsapp.sendMessage(targetGroupId, "הבוט התחבר בהצלחה! מנסה לשלוח מוצר ראשון...");
             console.log("🚀 הודעת בדיקה נשלחה לקבוצה!");
             
-            // תיקון: הפעלה מיידית של חיפוש מוצר ברגע החיבור
             fetchDeal(); 
         } catch (err) {
             console.log("❌ שגיאה בהפעלה ראשונית:", err.message);
         }
     }
 });
+
+// פקודת ההפעלה חייבת להיות כאן בסוף כדי לתפוס את ה-QR בצורה תקינה
+whatsapp.initialize();
