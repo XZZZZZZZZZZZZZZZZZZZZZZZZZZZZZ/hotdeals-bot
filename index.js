@@ -67,8 +67,8 @@ if (!fs.existsSync(DATA_DIR)) {
 const SENT_FILE = "./data/sent_products.json";
 
 // --- מערכת 6: סינון מחירים (עודכן לטווח רחב יותר כדי למנוע חסימת מוצרים) ---
-const MIN_PRICE = 10; // תיקון: מ-5 ל-1
-const MAX_PRICE = 300; // תיקון: מ-300 ל-1000
+const MIN_PRICE = 10 // תיקון: מ-5 ל-10
+const MAX_PRICE = 250; // תיקון: מ-300 ל-250
 
 let sentProducts = new Set();
 if (fs.existsSync(SENT_FILE)) {
