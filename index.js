@@ -174,31 +174,34 @@ ${title}
   }
 }
 
-// פונקציה לשליחה לשרת (נשלחת ראשונה)
+// פונקציה לשליחה לשרת/ערוץ (נשלחת ראשונה)
 async function sendToChannel(text) {
-  await axios.post(
-    CHANNEL_API_URL,
-    {
-      text: text,
-      author: "Deals Bot",
-      timestamp: new Date().toISOString()
-    },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": API_KEY
+  try {
+    await axios.post(
+      CHANNEL_API_URL,
+      {
+        text: text,
+        author: "Deals Bot",
+        timestamp: new Date().toISOString()
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": API_KEY
+        }
       }
-    }
-  );
-  console.log("נשלח לשרת/ערוץ בהצלחה.");
+    );
+    console.log("✅ הדיל נשלח לשרת/ערוץ שלך בהצלחה.");
+  } catch (err) {
+    console.log("❌ שגיאה בשליחה לשרת/ערוץ:", err.message);
+  }
 }
 
-// פונקציה חדשה לשליחה לוואטסאפ (נשלחת שנייה)
+// פונקציה לשליחה לוואטסאפ (נשלחת שנייה)
 async function sendToWhatsApp(text) {
-  // הגבלת שעות לוואטסאפ: שולח רק בין 08:00 ל-22:00
   const currentHour = new Date().getHours();
   if (currentHour < 8 || currentHour >= 22) {
-    console.log("מחוץ לשעות הפעילות של וואטסאפ. ההודעה נשלחה רק לשרת ה-API.");
+    console.log("🕒 מחוץ לשעות הפעילות של וואטסאפ (שולח רק בין 08:00 ל-22:00). ההודעה נשלחה רק לשרת ה-API.");
     return;
   }
 
@@ -212,17 +215,19 @@ async function sendToWhatsApp(text) {
       {
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${WA_API_TOKEN}` // שנה לפי הדרישות של ספק הוואטסאפ שלך
+          "Authorization": `Bearer ${WA_API_TOKEN}`
         }
       }
     );
-    console.log("נשלח לוואטסאפ בהצלחה.");
+    console.log("✅ הדיל נשלח לוואטסאפ בהצלחה.");
   } catch (err) {
-    console.log("שגיאה בשליחה לוואטסאפ:", err.response?.data || err.message);
+    console.log("❌ שגיאה בשליחה לוואטסאפ:", err.response?.data || err.message);
   }
 }
 
+// פונקציה ראשית למשיכת דילים (כולל לוגים למעקב)
 async function fetchDeal() {
+  console.log("=== התחלת חיפוש דיל חדש (השרת עלה או תזמון הגיע) ===");
   postCounter++;
 
   const params = {
@@ -255,7 +260,12 @@ async function fetchDeal() {
       ?.products
       ?.product;
 
-    if (!products?.length) return;
+    if (!products?.length) {
+      console.log("❌ לא נמצאו מוצרים בעליאקספרס עבור מילת המפתח הזו.");
+      return;
+    }
+
+    console.log(`✅ נמצאו ${products.length} מוצרים. מתחיל סינון...`);
 
     /* ===== טווח מחיר דינמי ===== */
     const minPrice = 10;
@@ -269,14 +279,22 @@ async function fetchDeal() {
     let affiliateLink = null;
 
     for (const product of products) {
-      if (sentProducts.has(product.product_id)) continue;
+      if (sentProducts.has(product.product_id)) {
+        continue; // המוצר כבר נשלח בעבר, מדלג
+      }
 
       const price = extractLowestPrice(product);
 
-      if (!price || price < minPrice || price > maxPrice) continue;
+      if (!price || price < minPrice || price > maxPrice) {
+        continue; // המחיר לא מתאים, מדלג
+      }
 
-      if (product.sale_volume < 50) continue;
+      if (product.sale_volume < 50) {
+        continue; // אין מספיק מכירות, מדלג
+      }
 
+      // אם הגענו לפה, המוצר עבר את כל הסינונים!
+      console.log(`✅ נמצא מוצר מתאים! מנסה לייצר לינק שותפים...`);
       const link = await generateAffiliateLink(product.product_detail_url);
 
       if (link) {
@@ -288,13 +306,16 @@ async function fetchDeal() {
           SENT_FILE,
           JSON.stringify([...sentProducts])
         );
-
         break;
       }
     }
 
-    if (!selectedProduct || !affiliateLink) return;
+    if (!selectedProduct || !affiliateLink) {
+      console.log("⚠️ כל המוצרים סוננו (כבר נשלחו בעבר, מחיר לא מתאים, או שאין מספיק מכירות). הבוט לא ישלח כלום הפעם.");
+      return;
+    }
 
+    console.log("✅ לינק שותפים נוצר! מכין טקסט לשליחה...");
     const rawPrice = extractLowestPrice(selectedProduct);
     const finalPrice = Math.floor(rawPrice * 100) / 100;
 
@@ -305,24 +326,16 @@ async function fetchDeal() {
 
     const messageText = `![](${resizedImage})\n\n${marketingText}\n\n🛒 להזמנה:\n${affiliateLink}`;
 
-    // סדר הפעולות קריטי:
-    // 1. קודם שולחים לשרת/API
+    console.log("🚀 שולח ל-API של הערוץ...");
     await sendToChannel(messageText);
     
-    // 2. רק לאחר מכן שולחים לוואטסאפ (והפונקציה בודקת גם אם השעה מתאימה)
+    console.log("🚀 מנסה לשלוח לוואטסאפ...");
     await sendToWhatsApp(messageText);
 
   } catch (err) {
-    console.log(err.response?.data || err.message);
+    console.log("❌ שגיאה כללית בחיפוש או בשליחת דיל:", err.response?.data || err.message);
   }
 }
 
 // תזמונים (Cron)
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
-cron.schedule("*/20 8-14 * * 5", fetchDeal);
-cron.schedule("*/20 22-23 * * 6", fetchDeal);
-cron.schedule("*/20 0-1 * * 0", fetchDeal);
-
-fetchDeal();
-
-setInterval(() => {}, 1000);
