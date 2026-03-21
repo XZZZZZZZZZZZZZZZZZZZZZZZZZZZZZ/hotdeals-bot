@@ -75,11 +75,11 @@ function getNextKeyword() {
     const data = fs.readFileSync(KEYWORDS_FILE, "utf-8");
     const parsedData = JSON.parse(data);
     
-    // שולף את המערך של המילים מתוך המפתח "מילות מפתח"
-    const keywords = parsedData["מילות מפתח"];
+    // שולף את המערך של המילים מתוך המפתח "keywords" בדיוק כמו בתמונה
+    const keywords = parsedData.keywords;
 
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
-      console.log(`⚠️ לא נמצאו מילים תחת "מילות מפתח" בקובץ ה-JSON! משתמש במילת ברירת מחדל: gadgets`);
+      console.log(`⚠️ לא נמצאו מילים תחת "keywords" בקובץ ה-JSON! משתמש במילת ברירת מחדל: gadgets`);
       return "gadgets";
     }
 
