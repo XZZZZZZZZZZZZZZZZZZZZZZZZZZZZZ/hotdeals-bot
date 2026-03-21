@@ -22,7 +22,7 @@ const TRACKING_ID = process.env.ALI_TRACKING_ID;
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
-// הגדרות וואטסאפ החדשות (ID הקבוצה שלך)
+// הגדרות וואטסאפ (ID הקבוצה שלך)
 const WA_CHAT_ID = "120363407216029255@g.us"; 
 
 // אתחול לקוח הוואטסאפ
@@ -32,8 +32,17 @@ const waClient = new Client({
 });
 
 waClient.on("qr", (qr) => {
-    console.log("📱 סרוק את ה-QR קוד הזה עם האפליקציה של וואטסאפ כדי להתחבר:");
+    // מדפיס את הברקוד בטרמינל למי שבכל זאת מצליח
     qrcode.generate(qr, { small: true });
+    
+    // מייצר קישור נורמלי ונקי לתמונה של הברקוד בדפדפן
+    const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
+    
+    console.log("\n=========================================");
+    console.log("🔗 הברקוד בטרמינל חתוך או לא נסרק? אין בעיה!");
+    console.log("העתק את הקישור הבא והדבק אותו בדפדפן שלך כדי לראות ברקוד נורמלי וברור:");
+    console.log(qrLink);
+    console.log("=========================================\n");
 });
 
 waClient.on("ready", () => {
