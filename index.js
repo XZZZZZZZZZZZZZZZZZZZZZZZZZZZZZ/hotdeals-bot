@@ -25,17 +25,18 @@ const API_KEY = "987654321";
 // הגדרות וואטסאפ (ID הקבוצה שלך)
 const WA_CHAT_ID = "120363407216029255@g.us"; 
 
+// קובץ מילות המפתח החיצוני
+const KEYWORDS_FILE = "keywords.txt";
+
 // אתחול לקוח הוואטסאפ
 const waClient = new Client({
-    authStrategy: new LocalAuth(), // שומר את החיבור כדי שלא תצטרך לסרוק שוב ושוב
+    authStrategy: new LocalAuth(),
     puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
 });
 
 waClient.on("qr", (qr) => {
-    // מדפיס את הברקוד בטרמינל למי שבכל זאת מצליח
     qrcode.generate(qr, { small: true });
     
-    // מייצר קישור נורמלי ונקי לתמונה של הברקוד בדפדפן
     const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
     
     console.log("\n=========================================");
@@ -61,27 +62,41 @@ if (fs.existsSync(SENT_FILE)) {
 
 let lastKeyword = null;
 let postCounter = 0;
-
-// מעקב אחרי מספרי העמודים לכל מילת מפתח
 let keywordPages = {};
 
+// הפונקציה החדשה שקוראת את מילות המפתח מהקובץ שלך
 function getNextKeyword() {
-  const KEYWORDS = [
-    "smart watch",
-    "bluetooth earbuds",
-    "phone accessories",
-    "car accessories",
-    "kitchen gadgets",
-    "gaming gadgets"
-  ];
+  try {
+    if (!fs.existsSync(KEYWORDS_FILE)) {
+      console.log(`⚠️ הקובץ ${KEYWORDS_FILE} לא נמצא! משתמש במילת ברירת מחדל: gadgets`);
+      return "gadgets";
+    }
 
-  let selected;
-  do {
-    selected = KEYWORDS[Math.floor(Math.random() * KEYWORDS.length)];
-  } while (selected === lastKeyword);
+    const data = fs.readFileSync(KEYWORDS_FILE, "utf-8");
+    // מפריד לשורות ומנקה רווחים מיותרים ושורות ריקות
+    const keywords = data.split('\n').map(k => k.trim()).filter(k => k.length > 0);
 
-  lastKeyword = selected;
-  return selected;
+    if (keywords.length === 0) {
+      console.log(`⚠️ הקובץ ${KEYWORDS_FILE} ריק! משתמש במילת ברירת מחדל: gadgets`);
+      return "gadgets";
+    }
+
+    if (keywords.length === 1) {
+      return keywords[0]; // אם יש רק מילה אחת, נחזיר אותה כדי למנוע לולאה אינסופית
+    }
+
+    let selected;
+    do {
+      selected = keywords[Math.floor(Math.random() * keywords.length)];
+    } while (selected === lastKeyword);
+
+    lastKeyword = selected;
+    return selected;
+
+  } catch (err) {
+    console.log(`❌ שגיאה בקריאת ${KEYWORDS_FILE}:`, err.message);
+    return "gadgets"; // מילת גיבוי במקרה של שגיאה
+  }
 }
 
 function generateSign(params) {
@@ -167,18 +182,27 @@ async function generateMarketingText(title, price) {
 
   try {
     const prompt = `
-כתוב פוסט דילים בעברית.
+משימה: כתוב פוסט שיווקי, קצר ומלהיב בעברית עבור דיל מעליאקספרס.
 
-מבנה:
-שם מוצר
-משפט קצר
-🚀 4 יתרונות
-סיום
+כותרת (הוסף אייקונים שמתאימים למוצר):
+[שם המוצר מתורגם, קצר ושיווקי - ללא שמות דגמים טכניים ארוכים]
 
-מחיר:
-💥 ₪${price} בלבד! 💥
+פתיחה (משפט אחד או שניים מלהיבים ורגשיים, למשל: "הגיע הזמן לשדרג...", "משהו מיוחד באמת..."):
+[טקסט הפתיחה]
 
-שם מוצר:
+יתרונות (רשימה של בדיוק 4 יתרונות שיווקיים, קצרים ולעניין - כל אחד מתחיל ב-✅):
+✅ [יתרון 1]
+✅ [יתרון 2]
+✅ [יתרון 3]
+✅ [יתרון 4]
+
+סיום (משפט סיום קצר ומזמין עם אייקון רגשי):
+[טקסט סיום]
+
+מחיר (השתמש בפורמט: 💥 מחיר: XX.XX₪ בלבד! 💥):
+💥 מחיר: ${price}₪ בלבד! 💥
+
+שם המוצר המקורי (לשימושך):
 ${title}
 `;
 
@@ -187,7 +211,7 @@ ${title}
       messages: [
         { role: "user", content: prompt }
       ],
-      temperature: 0.9
+      temperature: 0.8
     });
 
     return completion.choices[0].message.content;
@@ -233,7 +257,6 @@ async function fetchDeal() {
 
   const currentKeyword = getNextKeyword();
   
-  // אם אין לנו עמוד למילה הזו עדיין, נתחיל בעמוד 1
   if (!keywordPages[currentKeyword]) {
     keywordPages[currentKeyword] = 1;
   }
@@ -249,7 +272,7 @@ async function fetchDeal() {
     v: "2.0",
     sign_method: "md5",
     keywords: currentKeyword,
-    page_no: currentPage, // <--- כאן הוספנו את העמוד המשתנה!
+    page_no: currentPage, 
     tracking_id: TRACKING_ID,
     ship_to_country: "IL",
     target_currency: "ILS",
@@ -273,8 +296,8 @@ async function fetchDeal() {
       ?.product;
 
     if (!products?.length) {
-      console.log(`❌ לא נמצאו מוצרים בעמוד ${currentPage}. אולי הגענו לסוף. מאפס חזרה לעמוד 1.`);
-      keywordPages[currentKeyword] = 1; // נאפס כדי שבפעם הבאה נחזור להתחלה
+      console.log(`❌ לא נמצאו מוצרים בעמוד ${currentPage}. מאפס חזרה לעמוד 1.`);
+      keywordPages[currentKeyword] = 1; 
       return;
     }
 
@@ -307,17 +330,18 @@ async function fetchDeal() {
 
     if (!selectedProduct || !affiliateLink) {
       console.log(`⚠️ כל המוצרים בעמוד ${currentPage} כבר נשלחו או לא מתאימים. מעלה הילוך לעמוד ${currentPage + 1} לפעם הבאה!`);
-      keywordPages[currentKeyword]++; // מגדיל את מספר העמוד לפעם הבאה
+      keywordPages[currentKeyword]++; 
       return;
     }
 
+    console.log("✅ נמצא מוצר זהב! מכין טקסט שיווקי משודרג...");
     const rawPrice = extractLowestPrice(selectedProduct);
     const finalPrice = Math.floor(rawPrice * 100) / 100;
-    const translatedTitle = await translateTitle(selectedProduct.product_title);
-    const marketingText = await generateMarketingText(translatedTitle, finalPrice);
+    
+    const messageBodyText = await generateMarketingText(selectedProduct.product_title, finalPrice);
     const resizedImage = `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://", "")}`;
 
-    const messageText = `![](${resizedImage})\n\n${marketingText}\n\n🛒 להזמנה:\n${affiliateLink}`;
+    const messageText = `![](${resizedImage})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
 
     console.log("🚀 שולח ל-API של הערוץ...");
     await sendToChannel(messageText);
