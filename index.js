@@ -25,8 +25,11 @@ const API_KEY = "987654321";
 // הגדרות וואטסאפ (ID הקבוצה שלך)
 const WA_CHAT_ID = "120363407216029255@g.us"; 
 
-// שם קובץ מילות המפתח המעודכן ל-JSON
+// שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
+
+// שומר את זמן ההפעלה של השרת
+const SERVER_START_TIME = Date.now();
 
 // אתחול לקוח הוואטסאפ
 const waClient = new Client({
@@ -64,7 +67,6 @@ let lastKeyword = null;
 let postCounter = 0;
 let keywordPages = {};
 
-// הפונקציה שקוראת את מילות המפתח מתוך קובץ ה-JSON
 function getNextKeyword() {
   try {
     if (!fs.existsSync(KEYWORDS_FILE)) {
@@ -75,7 +77,6 @@ function getNextKeyword() {
     const data = fs.readFileSync(KEYWORDS_FILE, "utf-8");
     const parsedData = JSON.parse(data);
     
-    // שולף את המערך של המילים מתוך המפתח "keywords" בדיוק כמו בתמונה
     const keywords = parsedData.keywords;
 
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
@@ -84,7 +85,7 @@ function getNextKeyword() {
     }
 
     if (keywords.length === 1) {
-      return keywords[0]; // אם יש רק מילה אחת, נחזיר אותה כדי למנוע לולאה אינסופית
+      return keywords[0]; 
     }
 
     let selected;
@@ -245,6 +246,17 @@ async function sendToChannel(text) {
 }
 
 async function sendToWhatsApp(text) {
+  // חישוב הזמן שעבר מאז שהשרת הודלק
+  const timeSinceStart = Date.now() - SERVER_START_TIME;
+  const TWO_MINUTES = 120000; // 2 דקות במילי-שניות
+  
+  // אם עדיין לא עברו 2 דקות, תמתין את השארית לפני השליחה
+  if (timeSinceStart < TWO_MINUTES) {
+    const timeLeft = TWO_MINUTES - timeSinceStart;
+    console.log(`⏳ ממתין ${Math.floor(timeLeft / 1000)} שניות לפני שליחה לוואטסאפ כדי לאפשר חיבור/סריקה...`);
+    await new Promise(resolve => setTimeout(resolve, timeLeft));
+  }
+
   try {
     await waClient.sendMessage(WA_CHAT_ID, text);
     console.log("✅ הדיל נשלח לוואטסאפ בהצלחה.");
@@ -361,9 +373,7 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-// נשהה את הבדיקה הראשונה ב-10 שניות כדי לתת לוואטסאפ זמן להתחבר
-setTimeout(() => {
-  fetchDeal();
-}, 10000);
+// מריץ מיד כשהשרת עולה (לערוץ זה יישלח מיד, לוואטסאפ זה ימתין 2 דקות)
+fetchDeal();
 
 setInterval(() => {}, 1000);
