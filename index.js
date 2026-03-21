@@ -25,8 +25,8 @@ const API_KEY = "987654321";
 // הגדרות וואטסאפ (ID הקבוצה שלך)
 const WA_CHAT_ID = "120363407216029255@g.us"; 
 
-// קובץ מילות המפתח החיצוני
-const KEYWORDS_FILE = "keywords.txt";
+// שם קובץ מילות המפתח המעודכן ל-JSON
+const KEYWORDS_FILE = "keywords.json";
 
 // אתחול לקוח הוואטסאפ
 const waClient = new Client({
@@ -64,7 +64,7 @@ let lastKeyword = null;
 let postCounter = 0;
 let keywordPages = {};
 
-// הפונקציה החדשה שקוראת את מילות המפתח מהקובץ שלך
+// הפונקציה שקוראת את מילות המפתח מתוך קובץ ה-JSON
 function getNextKeyword() {
   try {
     if (!fs.existsSync(KEYWORDS_FILE)) {
@@ -73,11 +73,13 @@ function getNextKeyword() {
     }
 
     const data = fs.readFileSync(KEYWORDS_FILE, "utf-8");
-    // מפריד לשורות ומנקה רווחים מיותרים ושורות ריקות
-    const keywords = data.split('\n').map(k => k.trim()).filter(k => k.length > 0);
+    const parsedData = JSON.parse(data);
+    
+    // שולף את המערך של המילים מתוך המפתח "מילות מפתח"
+    const keywords = parsedData["מילות מפתח"];
 
-    if (keywords.length === 0) {
-      console.log(`⚠️ הקובץ ${KEYWORDS_FILE} ריק! משתמש במילת ברירת מחדל: gadgets`);
+    if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+      console.log(`⚠️ לא נמצאו מילים תחת "מילות מפתח" בקובץ ה-JSON! משתמש במילת ברירת מחדל: gadgets`);
       return "gadgets";
     }
 
@@ -94,8 +96,8 @@ function getNextKeyword() {
     return selected;
 
   } catch (err) {
-    console.log(`❌ שגיאה בקריאת ${KEYWORDS_FILE}:`, err.message);
-    return "gadgets"; // מילת גיבוי במקרה של שגיאה
+    console.log(`❌ שגיאה בקריאת ${KEYWORDS_FILE} (אולי ה-JSON לא תקין?):`, err.message);
+    return "gadgets"; 
   }
 }
 
