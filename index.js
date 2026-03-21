@@ -62,6 +62,9 @@ if (fs.existsSync(SENT_FILE)) {
 let lastKeyword = null;
 let postCounter = 0;
 
+// מעקב אחרי מספרי העמודים לכל מילת מפתח
+let keywordPages = {};
+
 function getNextKeyword() {
   const KEYWORDS = [
     "smart watch",
@@ -216,12 +219,6 @@ async function sendToChannel(text) {
 }
 
 async function sendToWhatsApp(text) {
-  const currentHour = new Date().getHours();
-  if (currentHour < 8 || currentHour >= 22) {
-    console.log("🕒 מחוץ לשעות הפעילות של וואטסאפ (שולח רק בין 08:00 ל-22:00).");
-    return;
-  }
-
   try {
     await waClient.sendMessage(WA_CHAT_ID, text);
     console.log("✅ הדיל נשלח לוואטסאפ בהצלחה.");
@@ -234,6 +231,16 @@ async function fetchDeal() {
   console.log("=== התחלת חיפוש דיל חדש ===");
   postCounter++;
 
+  const currentKeyword = getNextKeyword();
+  
+  // אם אין לנו עמוד למילה הזו עדיין, נתחיל בעמוד 1
+  if (!keywordPages[currentKeyword]) {
+    keywordPages[currentKeyword] = 1;
+  }
+
+  const currentPage = keywordPages[currentKeyword];
+  console.log(`🔍 מחפש את המילה "${currentKeyword}" בעמוד מספר ${currentPage}...`);
+
   const params = {
     app_key: APP_KEY,
     method: "aliexpress.affiliate.product.query",
@@ -241,7 +248,8 @@ async function fetchDeal() {
     format: "json",
     v: "2.0",
     sign_method: "md5",
-    keywords: getNextKeyword(),
+    keywords: currentKeyword,
+    page_no: currentPage, // <--- כאן הוספנו את העמוד המשתנה!
     tracking_id: TRACKING_ID,
     ship_to_country: "IL",
     target_currency: "ILS",
@@ -265,11 +273,12 @@ async function fetchDeal() {
       ?.product;
 
     if (!products?.length) {
-      console.log("❌ לא נמצאו מוצרים בעליאקספרס.");
+      console.log(`❌ לא נמצאו מוצרים בעמוד ${currentPage}. אולי הגענו לסוף. מאפס חזרה לעמוד 1.`);
+      keywordPages[currentKeyword] = 1; // נאפס כדי שבפעם הבאה נחזור להתחלה
       return;
     }
 
-    console.log(`✅ נמצאו ${products.length} מוצרים. מתחיל סינון...`);
+    console.log(`✅ נמצאו ${products.length} מוצרים בעמוד. מתחיל סינון...`);
 
     const minPrice = 10;
     let maxPrice = 250;
@@ -297,7 +306,8 @@ async function fetchDeal() {
     }
 
     if (!selectedProduct || !affiliateLink) {
-      console.log("⚠️ כל המוצרים סוננו. הבוט לא ישלח כלום הפעם.");
+      console.log(`⚠️ כל המוצרים בעמוד ${currentPage} כבר נשלחו או לא מתאימים. מעלה הילוך לעמוד ${currentPage + 1} לפעם הבאה!`);
+      keywordPages[currentKeyword]++; // מגדיל את מספר העמוד לפעם הבאה
       return;
     }
 
