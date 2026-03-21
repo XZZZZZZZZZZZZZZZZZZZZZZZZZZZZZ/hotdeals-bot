@@ -4,6 +4,8 @@ const axios = require("axios");
 const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
+const { Client, LocalAuth } = require("whatsapp-web.js");
+const qrcode = require("qrcode-terminal");
 
 let openai = null;
 
@@ -20,13 +22,27 @@ const TRACKING_ID = process.env.ALI_TRACKING_ID;
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
-// הגדרות וואטסאפ (יש להחליף בנתונים של ספק ה-API שלך)
-const WA_API_URL = process.env.WA_API_URL || "https://your-wa-api-url.com/send";
-const WA_API_TOKEN = process.env.WA_API_TOKEN || "YOUR_WA_TOKEN";
-const WA_CHAT_ID = process.env.WA_CHAT_ID || "YOUR_GROUP_ID";
+// הגדרות וואטסאפ החדשות (ID הקבוצה שלך)
+const WA_CHAT_ID = "120363407216029255@g.us"; 
+
+// אתחול לקוח הוואטסאפ
+const waClient = new Client({
+    authStrategy: new LocalAuth(), // שומר את החיבור כדי שלא תצטרך לסרוק שוב ושוב
+    puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+});
+
+waClient.on("qr", (qr) => {
+    console.log("📱 סרוק את ה-QR קוד הזה עם האפליקציה של וואטסאפ כדי להתחבר:");
+    qrcode.generate(qr, { small: true });
+});
+
+waClient.on("ready", () => {
+    console.log("✅ הבוט מחובר לוואטסאפ בהצלחה!");
+});
+
+waClient.initialize();
 
 const SENT_FILE = "sent_products.json";
-
 let sentProducts = new Set();
 
 if (fs.existsSync(SENT_FILE)) {
@@ -35,8 +51,6 @@ if (fs.existsSync(SENT_FILE)) {
 }
 
 let lastKeyword = null;
-
-/* ===== מונה הודעות ===== */
 let postCounter = 0;
 
 function getNextKeyword() {
@@ -77,15 +91,11 @@ function generateSign(params) {
 
 function extractLowestPrice(product) {
   let price = product.target_app_sale_price;
-
   if (!price) return 0;
-
   price = price.toString();
-
   if (price.includes("-")) {
     price = price.split("-")[0];
   }
-
   return parseFloat(price);
 }
 
@@ -174,7 +184,6 @@ ${title}
   }
 }
 
-// פונקציה לשליחה לשרת/ערוץ (נשלחת ראשונה)
 async function sendToChannel(text) {
   try {
     await axios.post(
@@ -197,37 +206,23 @@ async function sendToChannel(text) {
   }
 }
 
-// פונקציה לשליחה לוואטסאפ (נשלחת שנייה)
 async function sendToWhatsApp(text) {
   const currentHour = new Date().getHours();
   if (currentHour < 8 || currentHour >= 22) {
-    console.log("🕒 מחוץ לשעות הפעילות של וואטסאפ (שולח רק בין 08:00 ל-22:00). ההודעה נשלחה רק לשרת ה-API.");
+    console.log("🕒 מחוץ לשעות הפעילות של וואטסאפ (שולח רק בין 08:00 ל-22:00).");
     return;
   }
 
   try {
-    await axios.post(
-      WA_API_URL,
-      {
-        chatId: WA_CHAT_ID,
-        message: text
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${WA_API_TOKEN}`
-        }
-      }
-    );
+    await waClient.sendMessage(WA_CHAT_ID, text);
     console.log("✅ הדיל נשלח לוואטסאפ בהצלחה.");
   } catch (err) {
-    console.log("❌ שגיאה בשליחה לוואטסאפ:", err.response?.data || err.message);
+    console.log("❌ שגיאה בשליחה לוואטסאפ:", err.message);
   }
 }
 
-// פונקציה ראשית למשיכת דילים (כולל לוגים למעקב)
 async function fetchDeal() {
-  console.log("=== התחלת חיפוש דיל חדש (השרת עלה או תזמון הגיע) ===");
+  console.log("=== התחלת חיפוש דיל חדש ===");
   postCounter++;
 
   const params = {
@@ -261,67 +256,46 @@ async function fetchDeal() {
       ?.product;
 
     if (!products?.length) {
-      console.log("❌ לא נמצאו מוצרים בעליאקספרס עבור מילת המפתח הזו.");
+      console.log("❌ לא נמצאו מוצרים בעליאקספרס.");
       return;
     }
 
     console.log(`✅ נמצאו ${products.length} מוצרים. מתחיל סינון...`);
 
-    /* ===== טווח מחיר דינמי ===== */
     const minPrice = 10;
     let maxPrice = 250;
-
-    if (postCounter % 5 === 0) {
-      maxPrice = 300;
-    }
+    if (postCounter % 5 === 0) maxPrice = 300;
 
     let selectedProduct = null;
     let affiliateLink = null;
 
     for (const product of products) {
-      if (sentProducts.has(product.product_id)) {
-        continue; // המוצר כבר נשלח בעבר, מדלג
-      }
-
+      if (sentProducts.has(product.product_id)) continue;
       const price = extractLowestPrice(product);
+      if (!price || price < minPrice || price > maxPrice) continue;
+      if (product.sale_volume < 50) continue;
 
-      if (!price || price < minPrice || price > maxPrice) {
-        continue; // המחיר לא מתאים, מדלג
-      }
-
-      if (product.sale_volume < 50) {
-        continue; // אין מספיק מכירות, מדלג
-      }
-
-      // אם הגענו לפה, המוצר עבר את כל הסינונים!
-      console.log(`✅ נמצא מוצר מתאים! מנסה לייצר לינק שותפים...`);
+      console.log(`✅ נמצא מוצר מתאים! מייצר לינק שותפים...`);
       const link = await generateAffiliateLink(product.product_detail_url);
 
       if (link) {
         selectedProduct = product;
         affiliateLink = link;
         sentProducts.add(product.product_id);
-
-        fs.writeFileSync(
-          SENT_FILE,
-          JSON.stringify([...sentProducts])
-        );
+        fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
         break;
       }
     }
 
     if (!selectedProduct || !affiliateLink) {
-      console.log("⚠️ כל המוצרים סוננו (כבר נשלחו בעבר, מחיר לא מתאים, או שאין מספיק מכירות). הבוט לא ישלח כלום הפעם.");
+      console.log("⚠️ כל המוצרים סוננו. הבוט לא ישלח כלום הפעם.");
       return;
     }
 
-    console.log("✅ לינק שותפים נוצר! מכין טקסט לשליחה...");
     const rawPrice = extractLowestPrice(selectedProduct);
     const finalPrice = Math.floor(rawPrice * 100) / 100;
-
     const translatedTitle = await translateTitle(selectedProduct.product_title);
     const marketingText = await generateMarketingText(translatedTitle, finalPrice);
-
     const resizedImage = `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://", "")}`;
 
     const messageText = `![](${resizedImage})\n\n${marketingText}\n\n🛒 להזמנה:\n${affiliateLink}`;
@@ -333,9 +307,18 @@ async function fetchDeal() {
     await sendToWhatsApp(messageText);
 
   } catch (err) {
-    console.log("❌ שגיאה כללית בחיפוש או בשליחת דיל:", err.response?.data || err.message);
+    console.log("❌ שגיאה כללית:", err.message);
   }
 }
 
-// תזמונים (Cron)
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
+cron.schedule("*/20 8-14 * * 5", fetchDeal);
+cron.schedule("*/20 22-23 * * 6", fetchDeal);
+cron.schedule("*/20 0-1 * * 0", fetchDeal);
+
+// נשהה את הבדיקה הראשונה ב-10 שניות כדי לתת לוואטסאפ זמן להתחבר
+setTimeout(() => {
+  fetchDeal();
+}, 10000);
+
+setInterval(() => {}, 1000);
