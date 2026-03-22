@@ -39,7 +39,12 @@ waClient.on("qr", (qr) => {
     console.log("\n🔗 קישור לברקוד:\n" + qrLink + "\n");
 });
 
-waClient.on("ready", () => console.log("✅ הבוט מחובר לוואטסאפ בהצלחה!"));
+waClient.on("ready", () => {
+    console.log("✅ הבוט מחובר לוואטסאפ בהצלחה!");
+    console.log("🚀 מפעיל חיפוש ראשוני מיד בעקבות החיבור...");
+    fetchDeal(); 
+});
+
 waClient.initialize();
 
 const SENT_FILE = "sent_products.json";
@@ -83,8 +88,8 @@ async function generateMarketingText(title, price) {
 2. משפט קצר שמסביר בצורה זורמת למה צריך את המוצר הזה.
 3. 4 יתרונות בלבד (כל אחד מתחיל באייקון ✅).
 4. סיום קצר ומזמין.
+5. חובה להדפיס בסוף הפוסט את שורת המחיר הבאה: 💥 מחיר: ${price}₪ בלבד! 💥
 
-💥 מחיר: ${price}₪ בלבד! 💥
 שם המוצר: ${title}
 `;
     const completion = await openai.chat.completions.create({
@@ -93,7 +98,7 @@ async function generateMarketingText(title, price) {
       temperature: 0.7
     });
     return completion.choices[0].message.content;
-  } catch { return `🔥 דיל חדש!\n\n${title}\n\n💰 מחיר: ₪${price}`; }
+  } catch { return `🔥 דיל חדש!\n\n${title}\n\n💥 מחיר: ${price}₪ בלבד! 💥`; }
 }
 
 async function sendToChannel(text) {
@@ -164,7 +169,6 @@ async function fetchDeal() {
         await sendToChannel(`![](${resizedImage})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`);
         
         try {
-          // הפקודה שפותרת את בעיית התמונה בוואטסאפ!
           const media = await MessageMedia.fromUrl(resizedImage, { unsafeMime: true });
           await waClient.sendMessage(WA_CHAT_ID, media, { caption: `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}` });
           console.log("✅ נשלח בהצלחה לוואטסאפ עם תמונה!");
@@ -184,5 +188,4 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-setTimeout(fetchDeal, 60000);
 setInterval(() => {}, 1000);
