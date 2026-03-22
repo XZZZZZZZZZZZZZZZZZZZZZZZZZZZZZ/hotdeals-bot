@@ -260,7 +260,7 @@ async function fetchDeal() {
 
   let foundDeal = false;
   let pagesSearched = 0;
-  const MAX_PAGES_TO_SEARCH = 5; // חיפוש בעד 5 עמודים ברצף לכל מילה
+  const MAX_PAGES_TO_SEARCH = 50; // הנה התיקון ל-50 עמודים!
 
   while (!foundDeal && pagesSearched < MAX_PAGES_TO_SEARCH) {
     const currentPage = keywordPages[currentKeyword];
@@ -348,6 +348,7 @@ async function fetchDeal() {
         
         console.log("🚀 מכין תמונה וטקסט לשליחה לוואטסאפ...");
         try {
+          // פקודת התמונה שעובדת מושלם
           const media = await MessageMedia.fromUrl(resizedImage, { unsafeMime: true });
           await waClient.sendMessage(WA_CHAT_ID, media, { caption: whatsappMessageText });
           console.log("✅ הדיל והתמונה נשלחו לוואטסאפ בהצלחה!");
@@ -371,16 +372,18 @@ async function fetchDeal() {
     }
   }
 
-  // אם הבוט סרק 5 עמודים ברצף ולא מצא כלום, נודיע בלוגים
+  // אם הבוט סרק 50 עמודים ברצף ולא מצא כלום, נודיע בלוגים
   if (!foundDeal && pagesSearched >= MAX_PAGES_TO_SEARCH) {
     console.log(`⏳ חיפשתי ב-${MAX_PAGES_TO_SEARCH} עמודים ברצף למילה "${currentKeyword}" ולא מצאתי כלום. אני אנוח ואנסה מילה אחרת בחיפוש הבא.`);
   }
 }
 
-cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
-cron.schedule("*/20 8-14 * * 5", fetchDeal);
-cron.schedule("*/20 22-23 * * 6", fetchDeal);
-cron.schedule("*/20 0-1 * * 0", fetchDeal);
+// התיקון לאזור זמן - חסין מדילוגים!
+const cronOptions = { timezone: "Asia/Jerusalem" };
+cron.schedule("*/20 8-23 * * 0-4", fetchDeal, cronOptions);
+cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
+cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
+cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
 
 console.log("⏳ השרת עלה. נותן לוואטסאפ 60 שניות להתחבר לפני החיפוש הראשון...");
 setTimeout(() => {
