@@ -4,7 +4,6 @@ const axios = require("axios");
 const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
-// הוספנו כאן את MessageMedia כדי לשלוח תמונות אמיתיות לוואטסאפ
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 
@@ -23,13 +22,13 @@ const TRACKING_ID = process.env.ALI_TRACKING_ID;
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
-// הגדרות וואטסאפ (ID הקבוצה שלך או המספר הפרטי)
+// הגדרות וואטסאפ (ID הקבוצה שלך)
 const WA_CHAT_ID = "120363407216029255@g.us"; 
 
 // שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
 
-// אתחול לקוח הוואטסאפ עם הגדרות חיסכון בזיכרון והארכת זמן המתנה
+// אתחול לקוח הוואטסאפ
 const waClient = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
@@ -198,7 +197,6 @@ async function generateMarketingText(title, price) {
   }
 
   try {
-    // הפקודה המעודכנת לבינה המלאכותית עם הוספת "מה המוצר עושה"
     const prompt = `
 משימה: כתוב פוסט שיווקי, קצר ומלהיב בעברית עבור דיל מעליאקספרס.
 
@@ -270,108 +268,122 @@ async function fetchDeal() {
     keywordPages[currentKeyword] = 1;
   }
 
-  const currentPage = keywordPages[currentKeyword];
-  console.log(`🔍 מחפש את המילה "${currentKeyword}" בעמוד מספר ${currentPage}...`);
+  let foundDeal = false;
+  let pagesSearched = 0;
+  const MAX_PAGES_TO_SEARCH = 5; // חיפוש בעד 5 עמודים ברצף לכל מילה
 
-  const params = {
-    app_key: APP_KEY,
-    method: "aliexpress.affiliate.product.query",
-    timestamp: Date.now(),
-    format: "json",
-    v: "2.0",
-    sign_method: "md5",
-    keywords: currentKeyword,
-    page_no: currentPage, 
-    tracking_id: TRACKING_ID,
-    ship_to_country: "IL",
-    target_currency: "ILS",
-    target_language: "HE",
-    sort: "SALE_PRICE_ASC"
-  };
+  while (!foundDeal && pagesSearched < MAX_PAGES_TO_SEARCH) {
+    const currentPage = keywordPages[currentKeyword];
+    console.log(`🔍 מחפש את המילה "${currentKeyword}" בעמוד מספר ${currentPage}...`);
 
-  params.sign = generateSign(params);
+    const params = {
+      app_key: APP_KEY,
+      method: "aliexpress.affiliate.product.query",
+      timestamp: Date.now(),
+      format: "json",
+      v: "2.0",
+      sign_method: "md5",
+      keywords: currentKeyword,
+      page_no: currentPage, 
+      tracking_id: TRACKING_ID,
+      ship_to_country: "IL",
+      target_currency: "ILS",
+      target_language: "HE",
+      sort: "SALE_PRICE_ASC"
+    };
 
-  try {
-    const response = await axios.get(
-      "https://api-sg.aliexpress.com/sync",
-      { params }
-    );
+    params.sign = generateSign(params);
 
-    const products = response.data
-      ?.aliexpress_affiliate_product_query_response
-      ?.resp_result
-      ?.result
-      ?.products
-      ?.product;
-
-    if (!products?.length) {
-      console.log(`❌ לא נמצאו מוצרים בעמוד ${currentPage}. מאפס חזרה לעמוד 1.`);
-      keywordPages[currentKeyword] = 1; 
-      return;
-    }
-
-    console.log(`✅ נמצאו ${products.length} מוצרים בעמוד. מתחיל סינון...`);
-
-    const minPrice = 10;
-    let maxPrice = 250;
-    if (postCounter % 5 === 0) maxPrice = 300;
-
-    let selectedProduct = null;
-    let affiliateLink = null;
-
-    for (const product of products) {
-      if (sentProducts.has(product.product_id)) continue;
-      const price = extractLowestPrice(product);
-      if (!price || price < minPrice || price > maxPrice) continue;
-      if (product.sale_volume < 50) continue;
-
-      console.log(`✅ נמצא מוצר מתאים! מייצר לינק שותפים...`);
-      const link = await generateAffiliateLink(product.product_detail_url);
-
-      if (link) {
-        selectedProduct = product;
-        affiliateLink = link;
-        sentProducts.add(product.product_id);
-        fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
-        break;
-      }
-    }
-
-    if (!selectedProduct || !affiliateLink) {
-      console.log(`⚠️ כל המוצרים בעמוד ${currentPage} כבר נשלחו או לא מתאימים. מעלה הילוך לעמוד ${currentPage + 1} לפעם הבאה!`);
-      keywordPages[currentKeyword]++; 
-      return;
-    }
-
-    console.log("✅ נמצא מוצר זהב! מכין טקסט שיווקי משודרג...");
-    const rawPrice = extractLowestPrice(selectedProduct);
-    const finalPrice = Math.floor(rawPrice * 100) / 100;
-    
-    const messageBodyText = await generateMarketingText(selectedProduct.product_title, finalPrice);
-    const resizedImage = `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://", "")}`;
-
-    // מכין את ההודעה לערוץ (עם קוד התמונה של האתר)
-    const channelMessageText = `![](${resizedImage})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
-    
-    // מכין את ההודעה לוואטסאפ (רק הטקסט, התמונה תצורף כקובץ אמיתי)
-    const whatsappMessageText = `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
-
-    console.log("🚀 שולח ל-API של הערוץ...");
-    await sendToChannel(channelMessageText);
-    
-    console.log("🚀 מכין תמונה וטקסט לשליחה לוואטסאפ...");
     try {
-      // כאן הבוט מוריד את התמונה כדי לשלוח אותה יחד עם ההודעה
-      const media = await MessageMedia.fromUrl(resizedImage);
-      await waClient.sendMessage(WA_CHAT_ID, media, { caption: whatsappMessageText });
-      console.log("✅ הדיל והתמונה נשלחו לוואטסאפ בהצלחה!");
-    } catch (waErr) {
-      console.log("⚠️ לא הצלחתי לטעון את התמונה לוואטסאפ, שולח רק טקסט בינתיים. שגיאה:", waErr.message);
-      await waClient.sendMessage(WA_CHAT_ID, whatsappMessageText);
-    }
+      const response = await axios.get(
+        "https://api-sg.aliexpress.com/sync",
+        { params }
+      );
 
-  } catch (err) {
-    console.log("❌ שגיאה כללית:", err.message);
+      const products = response.data
+        ?.aliexpress_affiliate_product_query_response
+        ?.resp_result
+        ?.result
+        ?.products
+        ?.product;
+
+      if (!products?.length) {
+        console.log(`❌ לא נמצאו מוצרים בעמוד ${currentPage}. אולי הגענו לסוף. מאפס חזרה לעמוד 1.`);
+        keywordPages[currentKeyword] = 1; 
+        break; // יוצא מהלולאה ומחכה לחיפוש הבא
+      }
+
+      console.log(`✅ נמצאו ${products.length} מוצרים בעמוד. מתחיל סינון...`);
+
+      const minPrice = 10;
+      let maxPrice = 250;
+      if (postCounter % 5 === 0) maxPrice = 300;
+
+      let selectedProduct = null;
+      let affiliateLink = null;
+
+      for (const product of products) {
+        if (sentProducts.has(product.product_id)) continue;
+        const price = extractLowestPrice(product);
+        if (!price || price < minPrice || price > maxPrice) continue;
+        if (product.sale_volume < 50) continue;
+
+        console.log(`✅ נמצא מוצר מתאים! מייצר לינק שותפים...`);
+        const link = await generateAffiliateLink(product.product_detail_url);
+
+        if (link) {
+          selectedProduct = product;
+          affiliateLink = link;
+          sentProducts.add(product.product_id);
+          fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
+          break;
+        }
+      }
+
+      // אם מצאנו מוצר - שולחים ויוצאים מהלולאה
+      if (selectedProduct && affiliateLink) {
+        foundDeal = true;
+        console.log("✅ נמצא מוצר זהב! מכין טקסט שיווקי משודרג...");
+        const rawPrice = extractLowestPrice(selectedProduct);
+        const finalPrice = Math.floor(rawPrice * 100) / 100;
+        
+        const messageBodyText = await generateMarketingText(selectedProduct.product_title, finalPrice);
+        const resizedImage = `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://", "")}`;
+
+        const channelMessageText = `![](${resizedImage})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
+        const whatsappMessageText = `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
+
+        console.log("🚀 שולח ל-API של הערוץ...");
+        await sendToChannel(channelMessageText);
+        
+        console.log("🚀 מכין תמונה וטקסט לשליחה לוואטסאפ...");
+        try {
+          const media = await MessageMedia.fromUrl(resizedImage);
+          await waClient.sendMessage(WA_CHAT_ID, media, { caption: whatsappMessageText });
+          console.log("✅ הדיל והתמונה נשלחו לוואטסאפ בהצלחה!");
+        } catch (waErr) {
+          console.log("⚠️ לא הצלחתי לטעון את התמונה לוואטסאפ, שולח רק טקסט בינתיים. שגיאה:", waErr.message);
+          await waClient.sendMessage(WA_CHAT_ID, whatsappMessageText);
+        }
+        
+        break; // מצאנו דיל, יוצאים מהלולאה!
+
+      } else {
+        // אם לא מצאנו מוצר בעמוד הזה - עוברים מיד לעמוד הבא
+        console.log(`⚠️ כל המוצרים בעמוד ${currentPage} כבר נשלחו או לא מתאימים. עובר מיד לעמוד ${currentPage + 1}...`);
+        keywordPages[currentKeyword]++; 
+        pagesSearched++;
+      }
+
+    } catch (err) {
+      console.log("❌ שגיאה כללית במהלך סריקת העמוד:", err.message);
+      break; 
+    }
+  }
+
+  // אם הבוט סרק 5 עמודים ברצף ולא מצא כלום, נודיע בלוגים
+  if (!foundDeal && pagesSearched >= MAX_PAGES_TO_SEARCH) {
+    console.log(`⏳ חיפשתי ב-${MAX_PAGES_TO_SEARCH} עמודים ברצף למילה "${currentKeyword}" ולא מצאתי כלום. אני אנוח ואנסה מילה אחרת בחיפוש הבא.`);
   }
 }
 
