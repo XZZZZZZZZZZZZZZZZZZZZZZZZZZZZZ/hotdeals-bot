@@ -4,7 +4,8 @@ const axios = require("axios");
 const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
-const { Client, LocalAuth } = require("whatsapp-web.js");
+// הוספנו כאן את MessageMedia כדי לשלוח תמונות אמיתיות לוואטסאפ
+const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 
 let openai = null;
@@ -22,7 +23,7 @@ const TRACKING_ID = process.env.ALI_TRACKING_ID;
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
-// הגדרות וואטסאפ (ID הקבוצה שלך)
+// הגדרות וואטסאפ (ID הקבוצה שלך או המספר הפרטי)
 const WA_CHAT_ID = "120363407216029255@g.us"; 
 
 // שם קובץ מילות המפתח
@@ -33,7 +34,7 @@ const waClient = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
       headless: true,
-      protocolTimeout: 300000, // <--- הפתרון לשגיאה! נותנים לו 5 דקות להתאמץ לפני שהוא מתייאש
+      protocolTimeout: 300000, 
       args: [
         '--no-sandbox', 
         '--disable-setuid-sandbox',
@@ -197,14 +198,15 @@ async function generateMarketingText(title, price) {
   }
 
   try {
+    // הפקודה המעודכנת לבינה המלאכותית עם הוספת "מה המוצר עושה"
     const prompt = `
 משימה: כתוב פוסט שיווקי, קצר ומלהיב בעברית עבור דיל מעליאקספרס.
 
 כותרת (הוסף אייקונים שמתאימים למוצר):
 [שם המוצר מתורגם, קצר ושיווקי - ללא שמות דגמים טכניים ארוכים]
 
-פתיחה (משפט אחד או שניים מלהיבים ורגשיים, למשל: "הגיע הזמן לשדרג...", "משהו מיוחד באמת..."):
-[טקסט הפתיחה]
+מה המוצר עושה (משפט או שניים שמסבירים בצורה פשוטה, ברורה ומלהיבת מה המטרה של המוצר ולמה צריך אותו):
+[הסבר על המוצר]
 
 יתרונות (רשימה של בדיוק 4 יתרונות שיווקיים, קצרים ולעניין - כל אחד מתחיל ב-✅):
 ✅ [יתרון 1]
@@ -255,15 +257,6 @@ async function sendToChannel(text) {
     console.log("✅ הדיל נשלח לשרת/ערוץ שלך בהצלחה.");
   } catch (err) {
     console.log("❌ שגיאה בשליחה לשרת/ערוץ:", err.message);
-  }
-}
-
-async function sendToWhatsApp(text) {
-  try {
-    await waClient.sendMessage(WA_CHAT_ID, text);
-    console.log("✅ הדיל נשלח לוואטסאפ בהצלחה.");
-  } catch (err) {
-    console.log("❌ שגיאה בשליחה לוואטסאפ:", err.message);
   }
 }
 
@@ -357,13 +350,25 @@ async function fetchDeal() {
     const messageBodyText = await generateMarketingText(selectedProduct.product_title, finalPrice);
     const resizedImage = `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://", "")}`;
 
-    const messageText = `![](${resizedImage})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
+    // מכין את ההודעה לערוץ (עם קוד התמונה של האתר)
+    const channelMessageText = `![](${resizedImage})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
+    
+    // מכין את ההודעה לוואטסאפ (רק הטקסט, התמונה תצורף כקובץ אמיתי)
+    const whatsappMessageText = `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
 
     console.log("🚀 שולח ל-API של הערוץ...");
-    await sendToChannel(messageText);
+    await sendToChannel(channelMessageText);
     
-    console.log("🚀 מנסה לשלוח לוואטסאפ...");
-    await sendToWhatsApp(messageText);
+    console.log("🚀 מכין תמונה וטקסט לשליחה לוואטסאפ...");
+    try {
+      // כאן הבוט מוריד את התמונה כדי לשלוח אותה יחד עם ההודעה
+      const media = await MessageMedia.fromUrl(resizedImage);
+      await waClient.sendMessage(WA_CHAT_ID, media, { caption: whatsappMessageText });
+      console.log("✅ הדיל והתמונה נשלחו לוואטסאפ בהצלחה!");
+    } catch (waErr) {
+      console.log("⚠️ לא הצלחתי לטעון את התמונה לוואטסאפ, שולח רק טקסט בינתיים. שגיאה:", waErr.message);
+      await waClient.sendMessage(WA_CHAT_ID, whatsappMessageText);
+    }
 
   } catch (err) {
     console.log("❌ שגיאה כללית:", err.message);
