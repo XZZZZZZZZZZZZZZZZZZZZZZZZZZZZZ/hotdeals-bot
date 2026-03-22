@@ -24,12 +24,22 @@ const API_KEY = "987654321";
 const WA_CHAT_ID = "120363407216029255@g.us"; 
 const KEYWORDS_FILE = "keywords.json";
 
+// החזרנו את כל השריונות נגד קריסות שהיו בקוד המקורי!
 const waClient = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
       headless: true,
       protocolTimeout: 300000, 
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] 
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox', 
+        '--disable-dev-shm-usage', 
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--single-process'
+      ] 
     }
 });
 
@@ -39,12 +49,7 @@ waClient.on("qr", (qr) => {
     console.log("\n🔗 קישור לברקוד:\n" + qrLink + "\n");
 });
 
-waClient.on("ready", () => {
-    console.log("✅ הבוט מחובר לוואטסאפ בהצלחה!");
-    console.log("🚀 מפעיל חיפוש ראשוני מיד בעקבות החיבור...");
-    fetchDeal(); 
-});
-
+waClient.on("ready", () => console.log("✅ הבוט מחובר לוואטסאפ בהצלחה!"));
 waClient.initialize();
 
 const SENT_FILE = "sent_products.json";
@@ -179,13 +184,3 @@ async function fetchDeal() {
         keywordPages[currentKeyword]++;
         pagesSearched++;
       }
-    } catch (err) { break; }
-  }
-}
-
-cron.schedule("*/20 8-23 * * 0-4", fetchDeal);
-cron.schedule("*/20 8-14 * * 5", fetchDeal);
-cron.schedule("*/20 22-23 * * 6", fetchDeal);
-cron.schedule("*/20 0-1 * * 0", fetchDeal);
-
-setInterval(() => {}, 1000);
