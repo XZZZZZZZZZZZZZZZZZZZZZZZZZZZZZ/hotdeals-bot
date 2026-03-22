@@ -28,19 +28,20 @@ const WA_CHAT_ID = "120363407216029255@g.us";
 // שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
 
-// אתחול לקוח הוואטסאפ עם הגדרות חיסכון בזיכרון לשרתי ענן
+// אתחול לקוח הוואטסאפ עם הגדרות חיסכון בזיכרון והארכת זמן המתנה
 const waClient = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
       headless: true,
+      protocolTimeout: 300000, // <--- הפתרון לשגיאה! נותנים לו 5 דקות להתאמץ לפני שהוא מתייאש
       args: [
         '--no-sandbox', 
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage', // קריטי לשרתים קטנים כדי לא לקרוס
+        '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu' // מכבה גרפיקה מיותרת
+        '--disable-gpu'
       ] 
     }
 });
@@ -61,7 +62,6 @@ waClient.on("ready", () => {
     console.log("✅ הבוט מחובר לוואטסאפ בהצלחה!");
 });
 
-// מטפל בשגיאות כדי שהשרת לא יקרוס לגמרי
 waClient.on("auth_failure", msg => {
     console.error("❌ שגיאה באימות הוואטסאפ:", msg);
 });
@@ -375,8 +375,6 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-// המתנה של דקה שלמה (60 שניות) אחרי שהשרת עולה
-// כדי לא לחנוק אותו ולאפשר לוואטסאפ להתחבר בנחת!
 console.log("⏳ השרת עלה. נותן לוואטסאפ 60 שניות להתחבר לפני החיפוש הראשון...");
 setTimeout(() => {
   fetchDeal();
