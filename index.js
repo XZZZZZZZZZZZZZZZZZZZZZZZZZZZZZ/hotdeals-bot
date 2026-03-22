@@ -28,11 +28,12 @@ const WA_CHAT_ID = "120363407216029255@g.us";
 // שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
 
-// אתחול לקוח הוואטסאפ
+// אתחול לקוח הוואטסאפ - עם תוספת ה-Timeout הכפול כדי שהדפדפן לא יקרוס
 const waClient = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
       headless: true,
+      timeout: 300000, 
       protocolTimeout: 300000, 
       args: [
         '--no-sandbox', 
@@ -260,7 +261,7 @@ async function fetchDeal() {
 
   let foundDeal = false;
   let pagesSearched = 0;
-  const MAX_PAGES_TO_SEARCH = 50; // הנה התיקון ל-50 עמודים!
+  const MAX_PAGES_TO_SEARCH = 50; 
 
   while (!foundDeal && pagesSearched < MAX_PAGES_TO_SEARCH) {
     const currentPage = keywordPages[currentKeyword];
@@ -300,7 +301,7 @@ async function fetchDeal() {
       if (!products?.length) {
         console.log(`❌ לא נמצאו מוצרים בעמוד ${currentPage}. אולי הגענו לסוף. מאפס חזרה לעמוד 1.`);
         keywordPages[currentKeyword] = 1; 
-        break; // יוצא מהלולאה ומחכה לחיפוש הבא
+        break; 
       }
 
       console.log(`✅ נמצאו ${products.length} מוצרים בעמוד. מתחיל סינון...`);
@@ -330,7 +331,6 @@ async function fetchDeal() {
         }
       }
 
-      // אם מצאנו מוצר - שולחים ויוצאים מהלולאה
       if (selectedProduct && affiliateLink) {
         foundDeal = true;
         console.log("✅ נמצא מוצר זהב! מכין טקסט שיווקי משודרג...");
@@ -348,7 +348,6 @@ async function fetchDeal() {
         
         console.log("🚀 מכין תמונה וטקסט לשליחה לוואטסאפ...");
         try {
-          // פקודת התמונה שעובדת מושלם
           const media = await MessageMedia.fromUrl(resizedImage, { unsafeMime: true });
           await waClient.sendMessage(WA_CHAT_ID, media, { caption: whatsappMessageText });
           console.log("✅ הדיל והתמונה נשלחו לוואטסאפ בהצלחה!");
@@ -357,10 +356,9 @@ async function fetchDeal() {
           await waClient.sendMessage(WA_CHAT_ID, whatsappMessageText);
         }
         
-        break; // מצאנו דיל, יוצאים מהלולאה!
+        break; 
 
       } else {
-        // אם לא מצאנו מוצר בעמוד הזה - עוברים מיד לעמוד הבא
         console.log(`⚠️ כל המוצרים בעמוד ${currentPage} כבר נשלחו או לא מתאימים. עובר מיד לעמוד ${currentPage + 1}...`);
         keywordPages[currentKeyword]++; 
         pagesSearched++;
@@ -372,13 +370,11 @@ async function fetchDeal() {
     }
   }
 
-  // אם הבוט סרק 50 עמודים ברצף ולא מצא כלום, נודיע בלוגים
   if (!foundDeal && pagesSearched >= MAX_PAGES_TO_SEARCH) {
     console.log(`⏳ חיפשתי ב-${MAX_PAGES_TO_SEARCH} עמודים ברצף למילה "${currentKeyword}" ולא מצאתי כלום. אני אנוח ואנסה מילה אחרת בחיפוש הבא.`);
   }
 }
 
-// התיקון לאזור זמן - חסין מדילוגים!
 const cronOptions = { timezone: "Asia/Jerusalem" };
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal, cronOptions);
 cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
