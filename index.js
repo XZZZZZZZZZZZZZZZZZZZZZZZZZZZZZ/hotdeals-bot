@@ -28,13 +28,21 @@ const WA_CHAT_ID = "120363407216029255@g.us";
 // שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
 
-// שומר את זמן ההפעלה של השרת
-const SERVER_START_TIME = Date.now();
-
-// אתחול לקוח הוואטסאפ
+// אתחול לקוח הוואטסאפ עם הגדרות חיסכון בזיכרון לשרתי ענן
 const waClient = new Client({
     authStrategy: new LocalAuth(),
-    puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+    puppeteer: { 
+      headless: true,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage', // קריטי לשרתים קטנים כדי לא לקרוס
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu' // מכבה גרפיקה מיותרת
+      ] 
+    }
 });
 
 waClient.on("qr", (qr) => {
@@ -51,6 +59,11 @@ waClient.on("qr", (qr) => {
 
 waClient.on("ready", () => {
     console.log("✅ הבוט מחובר לוואטסאפ בהצלחה!");
+});
+
+// מטפל בשגיאות כדי שהשרת לא יקרוס לגמרי
+waClient.on("auth_failure", msg => {
+    console.error("❌ שגיאה באימות הוואטסאפ:", msg);
 });
 
 waClient.initialize();
@@ -80,7 +93,7 @@ function getNextKeyword() {
     const keywords = parsedData.keywords;
 
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
-      console.log(`⚠️ לא נמצאו מילים תחת "keywords" בקובץ ה-JSON! משתמש במילת ברירת מחדל: gadgets`);
+      console.log(`⚠️ לא נמצאו מילים תחת "keywords" בקובץ ה-JSON!`);
       return "gadgets";
     }
 
@@ -97,7 +110,7 @@ function getNextKeyword() {
     return selected;
 
   } catch (err) {
-    console.log(`❌ שגיאה בקריאת ${KEYWORDS_FILE} (אולי ה-JSON לא תקין?):`, err.message);
+    console.log(`❌ שגיאה בקריאת ${KEYWORDS_FILE}:`, err.message);
     return "gadgets"; 
   }
 }
@@ -246,17 +259,6 @@ async function sendToChannel(text) {
 }
 
 async function sendToWhatsApp(text) {
-  // חישוב הזמן שעבר מאז שהשרת הודלק
-  const timeSinceStart = Date.now() - SERVER_START_TIME;
-  const TWO_MINUTES = 120000; // 2 דקות במילי-שניות
-  
-  // אם עדיין לא עברו 2 דקות, תמתין את השארית לפני השליחה
-  if (timeSinceStart < TWO_MINUTES) {
-    const timeLeft = TWO_MINUTES - timeSinceStart;
-    console.log(`⏳ ממתין ${Math.floor(timeLeft / 1000)} שניות לפני שליחה לוואטסאפ כדי לאפשר חיבור/סריקה...`);
-    await new Promise(resolve => setTimeout(resolve, timeLeft));
-  }
-
   try {
     await waClient.sendMessage(WA_CHAT_ID, text);
     console.log("✅ הדיל נשלח לוואטסאפ בהצלחה.");
@@ -373,7 +375,11 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal);
 cron.schedule("*/20 22-23 * * 6", fetchDeal);
 cron.schedule("*/20 0-1 * * 0", fetchDeal);
 
-// מריץ מיד כשהשרת עולה (לערוץ זה יישלח מיד, לוואטסאפ זה ימתין 2 דקות)
-fetchDeal();
+// המתנה של דקה שלמה (60 שניות) אחרי שהשרת עולה
+// כדי לא לחנוק אותו ולאפשר לוואטסאפ להתחבר בנחת!
+console.log("⏳ השרת עלה. נותן לוואטסאפ 60 שניות להתחבר לפני החיפוש הראשון...");
+setTimeout(() => {
+  fetchDeal();
+}, 60000);
 
 setInterval(() => {}, 1000);
