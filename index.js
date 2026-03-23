@@ -18,12 +18,17 @@ const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
 const TRACKING_ID = process.env.ALI_TRACKING_ID;
 
+// השרת שאליו נשלח המידע ראשון
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
+// הגדרות וואטסאפ (ID הקבוצה שלך)
 const WA_CHAT_ID = "120363407216029255@g.us"; 
+
+// שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
 
+// אתחול לקוח הוואטסאפ - עם תוספת ה-Timeout הכפול כדי שהדפדפן לא יקרוס
 const waClient = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
@@ -375,11 +380,6 @@ cron.schedule("*/20 8-23 * * 0-4", fetchDeal, cronOptions);
 cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
 cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
 cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
-
-cron.schedule("0 3 * * *", () => {
-    console.log("🔄 מבצע רענון זיכרון יומי אוטומטי! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
-    process.exit(1); 
-}, cronOptions);
 
 console.log("⏳ השרת עלה. נותן לוואטסאפ 60 שניות להתחבר לפני החיפוש הראשון...");
 setTimeout(() => {
