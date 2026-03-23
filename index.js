@@ -28,7 +28,7 @@ const WA_CHAT_ID = "120363407216029255@g.us";
 // שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
 
-// אתחול לקוח הוואטסאפ - עם תוספת ה-Timeout הכפול כדי שהדפדפן לא יקרוס
+// אתחול לקוח הוואטסאפ - עם ה-Timeout של ה-5 דקות
 const waClient = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
@@ -359,31 +359,4 @@ async function fetchDeal() {
         break; 
 
       } else {
-        console.log(`⚠️ כל המוצרים בעמוד ${currentPage} כבר נשלחו או לא מתאימים. עובר מיד לעמוד ${currentPage + 1}...`);
-        keywordPages[currentKeyword]++; 
-        pagesSearched++;
-      }
-
-    } catch (err) {
-      console.log("❌ שגיאה כללית במהלך סריקת העמוד:", err.message);
-      break; 
-    }
-  }
-
-  if (!foundDeal && pagesSearched >= MAX_PAGES_TO_SEARCH) {
-    console.log(`⏳ חיפשתי ב-${MAX_PAGES_TO_SEARCH} עמודים ברצף למילה "${currentKeyword}" ולא מצאתי כלום. אני אנוח ואנסה מילה אחרת בחיפוש הבא.`);
-  }
-}
-
-const cronOptions = { timezone: "Asia/Jerusalem" };
-cron.schedule("*/20 8-23 * * 0-4", fetchDeal, cronOptions);
-cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
-cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
-cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
-
-console.log("⏳ השרת עלה. נותן לוואטסאפ 60 שניות להתחבר לפני החיפוש הראשון...");
-setTimeout(() => {
-  fetchDeal();
-}, 60000);
-
-setInterval(() => {}, 1000);
+        console.log(`⚠️ כל המוצרים בעמוד ${currentPage} כבר נשלחו או
