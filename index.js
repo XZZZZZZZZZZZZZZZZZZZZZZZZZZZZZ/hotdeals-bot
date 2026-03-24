@@ -412,9 +412,9 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
 cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
 cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
 
-// הפתרון שלנו: רענון אוטומטי מלא לזיכרון של השרת בכל לילה!
-cron.schedule("0 3 * * *", () => {
-    console.log("🔄 מבצע רענון זיכרון יומי אוטומטי! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
+// רענון זיכרון אוטומטי 3 פעמים ביום כדי שהוואטסאפ לא יקפא מעומס!
+cron.schedule("0 3,11,19 * * *", () => {
+    console.log("🔄 מבצע רענון זיכרון אוטומטי! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
     process.exit(1); 
 }, cronOptions);
 
