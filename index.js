@@ -28,11 +28,12 @@ const WA_CHAT_ID = "120363407216029255@g.us";
 // שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
 
-// התיקון הראשון: שמירת פנקס המוצרים בתוך הכונן המוגן (הכספת)
+// שמירת פנקס המוצרים בתוך הכונן המוגן (הכספת)
 const SENT_FILE = "./.wwebjs_auth/sent_products.json";
 
-// התיקון השני: משתנה "רמזור" שמונע משני חיפושים לרוץ במקביל
+// משתני הגנה ורמזורים
 let isFetching = false;
+let isWaReady = false; 
 
 // אתחול לקוח הוואטסאפ - עם תוספת ה-Timeout הכפול
 const waClient = new Client({
@@ -67,6 +68,7 @@ waClient.on("qr", (qr) => {
 
 waClient.on("ready", () => {
     console.log("✅ הבוט מחובר לוואטסאפ בהצלחה!");
+    isWaReady = true;
 });
 
 waClient.on("auth_failure", msg => {
@@ -145,7 +147,9 @@ function generateSign(params) {
 
 function extractLowestPrice(product) {
   let price = product.target_app_sale_price;
-  if (!price) return 0;
+  if (!price) {
+    return 0;
+  }
   price = price.toString();
   if (price.includes("-")) {
     price = price.split("-")[0];
@@ -168,7 +172,7 @@ async function translateTitle(title) {
       }
     );
     return res.data[0][0][0];
-  } catch {
+  } catch (err) {
     return title;
   }
 }
@@ -188,18 +192,22 @@ async function generateAffiliateLink(originalUrl) {
 
   params.sign = generateSign(params);
 
-  const response = await axios.get(
-    "https://api-sg.aliexpress.com/sync",
-    { params }
-  );
+  try {
+    const response = await axios.get(
+      "https://api-sg.aliexpress.com/sync",
+      { params }
+    );
 
-  return response.data
-    ?.aliexpress_affiliate_link_generate_response
-    ?.resp_result
-    ?.result
-    ?.promotion_links
-    ?.promotion_link?.[0]
-    ?.promotion_link || null;
+    return response.data
+      ?.aliexpress_affiliate_link_generate_response
+      ?.resp_result
+      ?.result
+      ?.promotion_links
+      ?.promotion_link?.[0]
+      ?.promotion_link || null;
+  } catch (err) {
+    return null;
+  }
 }
 
 async function generateMarketingText(title, price) {
@@ -232,7 +240,7 @@ ${title}
     });
 
     return completion.choices[0].message.content;
-  } catch {
+  } catch (err) {
     return `🔥 דיל חדש!\n\n${title}\n\n💥 מחיר: ${price}₪ בלבד! 💥`;
   }
 }
@@ -266,6 +274,12 @@ async function fetchDeal() {
     return;
   }
   
+  // חסימת ההרצה אם וואטסאפ עדיין לא מוכן לגמרי
+  if (!isWaReady) {
+    console.log("⏳ וואטסאפ עדיין בתהליכי התחברות. ממתין לסיבוב הבא בעוד 20 דקות...");
+    return;
+  }
+
   // מדליק את הרמזור - אני מתחיל לעבוד
   isFetching = true;
 
@@ -328,18 +342,27 @@ async function fetchDeal() {
 
         const minPrice = 10;
         let maxPrice = 250;
-        if (postCounter % 5 === 0) maxPrice = 300;
+        if (postCounter % 5 === 0) {
+          maxPrice = 300;
+        }
 
         let selectedProduct = null;
         let affiliateLink = null;
 
         for (const product of products) {
           // בודק בפנקס אם כבר שלחנו את המוצר הזה
-          if (sentProducts.has(product.product_id)) continue;
+          if (sentProducts.has(product.product_id)) {
+            continue;
+          }
 
           const price = extractLowestPrice(product);
-          if (!price || price < minPrice || price > maxPrice) continue;
-          if (product.sale_volume < 50) continue;
+          if (!price || price < minPrice || price > maxPrice) {
+            continue;
+          }
+          
+          if (product.sale_volume < 50) {
+            continue;
+          }
 
           console.log(`✅ נמצא מוצר מתאים! מייצר לינק שותפים...`);
           const link = await generateAffiliateLink(product.product_detail_url);
@@ -347,10 +370,6 @@ async function fetchDeal() {
           if (link) {
             selectedProduct = product;
             affiliateLink = link;
-            
-            // רושם בפנקס ושומר בכספת!
-            sentProducts.add(product.product_id);
-            fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
             break;
           }
         }
@@ -362,23 +381,36 @@ async function fetchDeal() {
           const finalPrice = Math.floor(rawPrice * 100) / 100;
           
           const messageBodyText = await generateMarketingText(selectedProduct.product_title, finalPrice);
-          const resizedImage = `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://", "")}`;
+          const imgUrl = `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://", "")}`;
 
-          const channelMessageText = `![](${resizedImage})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
-          const whatsappMessageText = `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
-
+          const channelMessageText = `![](${imgUrl})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
+          
           console.log("🚀 שולח ל-API של הערוץ...");
           await sendToChannel(channelMessageText);
           
-          console.log("🚀 מכין תמונה וטקסט לשליחה לוואטסאפ...");
+          console.log("🚀 מוריד תמונה לוואטסאפ (עם סטופר של 15 שניות)...");
           try {
-            const media = await MessageMedia.fromUrl(resizedImage, { unsafeMime: true });
-            await waClient.sendMessage(WA_CHAT_ID, media, { caption: whatsappMessageText });
-            console.log("✅ הדיל והתמונה נשלחו לוואטסאפ בהצלחה!");
+            // השרת מוריד את התמונה בעצמו. אם השירות האיטי נתקע, זה יחתוך אותו אחרי 15 שניות.
+            const imageResponse = await axios.get(imgUrl, { 
+                responseType: 'arraybuffer', 
+                timeout: 15000 
+            });
+            
+            const mimetype = imageResponse.headers['content-type'] || 'image/jpeg';
+            const base64Data = Buffer.from(imageResponse.data, 'binary').toString('base64');
+            const media = new MessageMedia(mimetype, base64Data, 'deal.jpg');
+            
+            await waClient.sendMessage(WA_CHAT_ID, media, { caption: `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}` });
+            console.log("✅ הדיל והתמונה המוקטנת נשלחו לוואטסאפ בהצלחה!");
+            
           } catch (waErr) {
-            console.log("⚠️ לא הצלחתי לטעון את התמונה לוואטסאפ, שולח רק טקסט בינתיים. שגיאה:", waErr.message);
-            await waClient.sendMessage(WA_CHAT_ID, whatsappMessageText);
+            console.log("⚠️ אתר הקטנת התמונות היה איטי מדי או קרס, שולח רק טקסט בינתיים. שגיאה:", waErr.message);
+            await waClient.sendMessage(WA_CHAT_ID, `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`);
           }
+          
+          // רושם בפנקס ושומר בכספת!
+          sentProducts.add(selectedProduct.product_id);
+          fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
           
           break; 
 
@@ -390,6 +422,13 @@ async function fetchDeal() {
 
       } catch (err) {
         console.log("❌ שגיאה כללית במהלך סריקת העמוד:", err.message);
+        
+        // פרוטוקול הזומבי - אם הדפדפן קפא, מכבים ומדליקים מיד!
+        if (err.message.includes("timed out") || err.message.includes("Session closed")) {
+            console.log("🚨 דפדפן הוואטסאפ קפא לגמרי מרוב עומס זיכרון! מבצע ריסטרט חירום כדי להתאושש...");
+            process.exit(1); 
+        }
+        
         break; 
       }
     }
@@ -412,17 +451,14 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
 cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
 cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
 
-// רענון זיכרון אוטומטי 3 פעמים ביום כדי שהוואטסאפ לא יקפא מעומס!
+// הפתרון שלנו: רענון אוטומטי מלא לזיכרון של השרת 3 פעמים ביום!
 cron.schedule("0 3,11,19 * * *", () => {
-    console.log("🔄 מבצע רענון זיכרון אוטומטי! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
+    console.log("🔄 מבצע רענון זיכרון יומי אוטומטי! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
     process.exit(1); 
 }, cronOptions);
 
-console.log("⏳ השרת עלה. נותן לוואטסאפ 60 שניות להתחבר לפני החיפוש הראשון...");
-setTimeout(() => {
-  fetchDeal();
-}, 60000);
+console.log("⏳ השרת עלה וממתין לחיבור הוואטסאפ (לא מחפש עד שמוכן)...");
 
 setInterval(() => {}, 1000);
 
-// --- סוף הקוד המקורי השלם ---
+// --- סוף הקוד המלא, המקורי והמרווח ---
