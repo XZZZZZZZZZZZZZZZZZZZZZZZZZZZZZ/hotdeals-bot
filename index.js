@@ -64,6 +64,8 @@ waClient.on("qr", (qr) => {
     console.log("העתק את הקישור הבא והדבק אותו בדפדפן שלך כדי לראות ברקוד נורמלי וברור:");
     console.log(qrLink);
     console.log("=========================================\n");
+    // אם הוא מבקש ברקוד, סימן שהוא כרגע לא מחובר
+    isWaReady = false;
 });
 
 waClient.on("ready", () => {
@@ -73,6 +75,12 @@ waClient.on("ready", () => {
 
 waClient.on("auth_failure", msg => {
     console.error("❌ שגיאה באימות הוואטסאפ:", msg);
+    isWaReady = false;
+});
+
+waClient.on("disconnected", (reason) => {
+    console.log("⚠️ וואטסאפ התנתק!", reason);
+    isWaReady = false;
 });
 
 waClient.initialize();
@@ -274,13 +282,7 @@ async function fetchDeal() {
     return;
   }
   
-  // חסימת ההרצה אם וואטסאפ עדיין לא מוכן לגמרי
-  if (!isWaReady) {
-    console.log("⏳ וואטסאפ עדיין בתהליכי התחברות. ממתין לסיבוב הבא בעוד 20 דקות...");
-    return;
-  }
-
-  // מדליק את הרמזור - אני מתחיל לעבוד
+  // מדליק את הרמזור - אני מתחיל לעבוד (הסרנו את חסימת הוואטסאפ מההתחלה!)
   isFetching = true;
 
   try {
@@ -385,30 +387,40 @@ async function fetchDeal() {
 
           const channelMessageText = `![](${imgUrl})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
           
+          // שולחים קודם כל לערוץ, בלי לשאול שאלות!
           console.log("🚀 שולח ל-API של הערוץ...");
           await sendToChannel(channelMessageText);
           
-          console.log("🚀 מוריד תמונה לוואטסאפ (עם סטופר של 15 שניות)...");
-          try {
-            // השרת מוריד את התמונה בעצמו. אם השירות האיטי נתקע, זה יחתוך אותו אחרי 15 שניות.
-            const imageResponse = await axios.get(imgUrl, { 
-                responseType: 'arraybuffer', 
-                timeout: 15000 
-            });
-            
-            const mimetype = imageResponse.headers['content-type'] || 'image/jpeg';
-            const base64Data = Buffer.from(imageResponse.data, 'binary').toString('base64');
-            const media = new MessageMedia(mimetype, base64Data, 'deal.jpg');
-            
-            await waClient.sendMessage(WA_CHAT_ID, media, { caption: `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}` });
-            console.log("✅ הדיל והתמונה המוקטנת נשלחו לוואטסאפ בהצלחה!");
-            
-          } catch (waErr) {
-            console.log("⚠️ אתר הקטנת התמונות היה איטי מדי או קרס, שולח רק טקסט בינתיים. שגיאה:", waErr.message);
-            await waClient.sendMessage(WA_CHAT_ID, `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`);
+          // עכשיו בודקים אם אפשר לשלוח גם לוואטסאפ
+          if (isWaReady) {
+            console.log("🚀 מוריד תמונה לוואטסאפ (עם סטופר של 15 שניות)...");
+            try {
+              // השרת מוריד את התמונה בעצמו. אם השירות האיטי נתקע, זה יחתוך אותו אחרי 15 שניות.
+              const imageResponse = await axios.get(imgUrl, { 
+                  responseType: 'arraybuffer', 
+                  timeout: 15000 
+              });
+              
+              const mimetype = imageResponse.headers['content-type'] || 'image/jpeg';
+              const base64Data = Buffer.from(imageResponse.data, 'binary').toString('base64');
+              const media = new MessageMedia(mimetype, base64Data, 'deal.jpg');
+              
+              await waClient.sendMessage(WA_CHAT_ID, media, { caption: `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}` });
+              console.log("✅ הדיל והתמונה המוקטנת נשלחו לוואטסאפ בהצלחה!");
+              
+            } catch (waErr) {
+              console.log("⚠️ אתר הקטנת התמונות היה איטי מדי או קרס, מנסה לשלוח רק טקסט בינתיים. שגיאה:", waErr.message);
+              try {
+                  await waClient.sendMessage(WA_CHAT_ID, `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`);
+              } catch (textErr) {
+                  console.log("❌ שגיאה גם בשליחת הטקסט לוואטסאפ:", textErr.message);
+              }
+            }
+          } else {
+            console.log("⚠️ וואטסאפ כרגע מנותק או מחכה לברקוד. מדלג עליו להפעם וממשיך לעבוד רגיל בשביל הערוץ!");
           }
           
-          // רושם בפנקס ושומר בכספת!
+          // רושם בפנקס ושומר בכספת בכל מקרה (הערוץ תמיד מקבל)
           sentProducts.add(selectedProduct.product_id);
           fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
           
@@ -451,13 +463,13 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
 cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
 cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
 
-// הפתרון שלנו: רענון אוטומטי מלא לזיכרון של השרת 3 פעמים ביום!
-cron.schedule("0 3,11,19 * * *", () => {
-    console.log("🔄 מבצע רענון זיכרון יומי אוטומטי! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
+// הפתרון שלנו: רענון אוטומטי מלא לזיכרון של השרת כל 4 שעות בדיוק!
+cron.schedule("0 3,7,11,15,19,23 * * *", () => {
+    console.log("🔄 מבצע רענון זיכרון יומי אוטומטי כל 4 שעות! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
     process.exit(1); 
 }, cronOptions);
 
-console.log("⏳ השרת עלה וממתין לחיבור הוואטסאפ (לא מחפש עד שמוכן)...");
+console.log("⏳ השרת עלה. הערוץ מוכן לעבודה מיד, הוואטסאפ יצטרף כשיתחבר...");
 
 setInterval(() => {}, 1000);
 
