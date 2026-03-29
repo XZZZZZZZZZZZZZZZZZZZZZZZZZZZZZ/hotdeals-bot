@@ -18,28 +18,22 @@ const APP_KEY = process.env.ALI_APP_KEY;
 const APP_SECRET = process.env.ALI_APP_SECRET;
 const TRACKING_ID = process.env.ALI_TRACKING_ID;
 
-// השרת שאליו נשלח המידע ראשון
 const CHANNEL_API_URL = "https://dilim.clickandgo.cfd/api/import/post";
 const API_KEY = "987654321";
 
-// הגדרות וואטסאפ (ID הקבוצה שלך)
 const WA_CHAT_ID = "120363407216029255@g.us"; 
-
-// שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
-
-// ✨ התיקון שלנו: כספת חדשה ונקייה לחלוטין!
 const SENT_FILE = "./bot_data/sent_products.json";
 
-// משתני הגנה ורמזורים
 let isFetching = false;
 let isWaReady = false; 
 
-// אתחול לקוח הוואטסאפ - מוגדר לעבוד מתוך הכספת החדשה
+// ✨ התיקון: הגדרות דפדפן משופרות כדי למנוע את קריסת ה-Execution context
 const waClient = new Client({
     authStrategy: new LocalAuth({ dataPath: './bot_data' }),
     puppeteer: { 
       headless: true,
+      // הגדלנו את הזמנים כדי לתת לדפדפן אוויר
       timeout: 300000, 
       protocolTimeout: 300000, 
       args: [
@@ -49,7 +43,9 @@ const waClient = new Client({
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-extensions', // כיבוי תוספים מיותרים שעלולים להפריע
+        '--disable-software-rasterizer'
       ] 
     }
 });
@@ -64,7 +60,6 @@ waClient.on("qr", (qr) => {
     console.log("העתק את הקישור הבא והדבק אותו בדפדפן שלך כדי לראות ברקוד נורמלי וברור:");
     console.log(qrLink);
     console.log("=========================================\n");
-    // אם הוא מבקש ברקוד, סימן שהוא כרגע לא מחובר
     isWaReady = false;
 });
 
@@ -83,11 +78,18 @@ waClient.on("disconnected", (reason) => {
     isWaReady = false;
 });
 
-waClient.initialize();
+// ✨ התיקון השני: אנחנו ממתינים קצת לפני שאנחנו מנסים לאתחל שוב, כדי שהשרת יירגע
+console.log("⏳ מנסה לאתחל את וואטסאפ בעוד 10 שניות...");
+setTimeout(() => {
+    try {
+        waClient.initialize();
+    } catch (e) {
+        console.log("❌ שגיאה כללית באתחול וואטסאפ:", e.message);
+    }
+}, 10000);
 
 let sentProducts = new Set();
 
-// ✨ מוודאים שהכספת החדשה קיימת, ואם לא - יוצרים אותה
 if (!fs.existsSync("./bot_data")) {
     fs.mkdirSync("./bot_data", { recursive: true });
 }
@@ -457,7 +459,6 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
 cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
 cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
 
-// רענון אוטומטי מלא לזיכרון של השרת כל 4 שעות
 cron.schedule("0 3,7,11,15,19,23 * * *", () => {
     console.log("🔄 מבצע רענון זיכרון יומי אוטומטי כל 4 שעות! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
     process.exit(1); 
