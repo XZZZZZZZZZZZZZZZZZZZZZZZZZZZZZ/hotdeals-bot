@@ -28,16 +28,16 @@ const WA_CHAT_ID = "120363407216029255@g.us";
 // שם קובץ מילות המפתח
 const KEYWORDS_FILE = "keywords.json";
 
-// שמירת פנקס המוצרים בתוך הכונן המוגן (הכספת)
-const SENT_FILE = "./.wwebjs_auth/sent_products.json";
+// ✨ התיקון שלנו: כספת חדשה ונקייה לחלוטין!
+const SENT_FILE = "./bot_data/sent_products.json";
 
 // משתני הגנה ורמזורים
 let isFetching = false;
 let isWaReady = false; 
 
-// אתחול לקוח הוואטסאפ - עם תוספת ה-Timeout הכפול
+// אתחול לקוח הוואטסאפ - מוגדר לעבוד מתוך הכספת החדשה
 const waClient = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({ dataPath: './bot_data' }),
     puppeteer: { 
       headless: true,
       timeout: 300000, 
@@ -87,9 +87,9 @@ waClient.initialize();
 
 let sentProducts = new Set();
 
-// מוודאים שתיקיית הכספת קיימת לפני שמנסים לקרוא ממנה
-if (!fs.existsSync("./.wwebjs_auth")) {
-    fs.mkdirSync("./.wwebjs_auth", { recursive: true });
+// ✨ מוודאים שהכספת החדשה קיימת, ואם לא - יוצרים אותה
+if (!fs.existsSync("./bot_data")) {
+    fs.mkdirSync("./bot_data", { recursive: true });
 }
 
 if (fs.existsSync(SENT_FILE)) {
@@ -276,13 +276,11 @@ async function sendToChannel(text) {
 }
 
 async function fetchDeal() {
-  // בדיקת הרמזור: האם יש כבר חיפוש שרץ כרגע?
   if (isFetching) {
     console.log("⏳ חיפוש כבר פועל ברקע! עוצר את ההרצה הנוכחית כדי למנוע כפילויות.");
     return;
   }
   
-  // מדליק את הרמזור - אני מתחיל לעבוד (הסרנו את חסימת הוואטסאפ מההתחלה!)
   isFetching = true;
 
   try {
@@ -352,7 +350,6 @@ async function fetchDeal() {
         let affiliateLink = null;
 
         for (const product of products) {
-          // בודק בפנקס אם כבר שלחנו את המוצר הזה
           if (sentProducts.has(product.product_id)) {
             continue;
           }
@@ -387,7 +384,7 @@ async function fetchDeal() {
 
           const channelMessageText = `![](${imgUrl})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
           
-          // שולחים קודם כל לערוץ, בלי לשאול שאלות!
+          // שולחים קודם כל לערוץ
           console.log("🚀 שולח ל-API של הערוץ...");
           await sendToChannel(channelMessageText);
           
@@ -395,7 +392,6 @@ async function fetchDeal() {
           if (isWaReady) {
             console.log("🚀 מוריד תמונה לוואטסאפ (עם סטופר של 15 שניות)...");
             try {
-              // השרת מוריד את התמונה בעצמו. אם השירות האיטי נתקע, זה יחתוך אותו אחרי 15 שניות.
               const imageResponse = await axios.get(imgUrl, { 
                   responseType: 'arraybuffer', 
                   timeout: 15000 
@@ -420,7 +416,7 @@ async function fetchDeal() {
             console.log("⚠️ וואטסאפ כרגע מנותק או מחכה לברקוד. מדלג עליו להפעם וממשיך לעבוד רגיל בשביל הערוץ!");
           }
           
-          // רושם בפנקס ושומר בכספת בכל מקרה (הערוץ תמיד מקבל)
+          // רושם בפנקס ושומר בכספת החדשה!
           sentProducts.add(selectedProduct.product_id);
           fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
           
@@ -435,7 +431,6 @@ async function fetchDeal() {
       } catch (err) {
         console.log("❌ שגיאה כללית במהלך סריקת העמוד:", err.message);
         
-        // פרוטוקול הזומבי - אם הדפדפן קפא, מכבים ומדליקים מיד!
         if (err.message.includes("timed out") || err.message.includes("Session closed")) {
             console.log("🚨 דפדפן הוואטסאפ קפא לגמרי מרוב עומס זיכרון! מבצע ריסטרט חירום כדי להתאושש...");
             process.exit(1); 
@@ -452,7 +447,6 @@ async function fetchDeal() {
   } catch (error) {
     console.log("❌ שגיאה בלתי צפויה:", error.message);
   } finally {
-    // מכבה את הרמזור בסיום העבודה, לא משנה מה קרה
     isFetching = false;
   }
 }
@@ -463,7 +457,7 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
 cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
 cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
 
-// הפתרון שלנו: רענון אוטומטי מלא לזיכרון של השרת כל 4 שעות בדיוק!
+// רענון אוטומטי מלא לזיכרון של השרת כל 4 שעות
 cron.schedule("0 3,7,11,15,19,23 * * *", () => {
     console.log("🔄 מבצע רענון זיכרון יומי אוטומטי כל 4 שעות! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
     process.exit(1); 
@@ -472,5 +466,3 @@ cron.schedule("0 3,7,11,15,19,23 * * *", () => {
 console.log("⏳ השרת עלה. הערוץ מוכן לעבודה מיד, הוואטסאפ יצטרף כשיתחבר...");
 
 setInterval(() => {}, 1000);
-
-// --- סוף הקוד המלא, המקורי והמרווח ---
