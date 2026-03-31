@@ -4,8 +4,6 @@ const axios = require("axios");
 const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
-const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
-const qrcode = require("qrcode-terminal");
 
 let openai = null;
 
@@ -25,69 +23,14 @@ const WA_CHAT_ID = "120363407216029255@g.us";
 const KEYWORDS_FILE = "keywords.json";
 const SENT_FILE = "./bot_data/sent_products.json";
 
+// ==========================================
+// ✨ הגדרות Green API החדשות והמהירות! ✨
+// ==========================================
+const GREEN_API_URL = "https://7107.api.greenapi.com"; 
+const GREEN_API_ID = "7107571319"; 
+const GREEN_API_TOKEN = "7869922969b9444cba16f8edb61b6c7a1e63843e7c414b228c"; 
+
 let isFetching = false;
-let isWaReady = false; 
-
-// ✨ התיקון: הגדרות דפדפן משופרות כדי למנוע את קריסת ה-Execution context
-const waClient = new Client({
-    authStrategy: new LocalAuth({ dataPath: './bot_data' }),
-    puppeteer: { 
-      headless: true,
-      // הגדלנו את הזמנים כדי לתת לדפדפן אוויר
-      timeout: 300000, 
-      protocolTimeout: 300000, 
-      args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-        '--disable-extensions', // כיבוי תוספים מיותרים שעלולים להפריע
-        '--disable-software-rasterizer'
-      ] 
-    }
-});
-
-waClient.on("qr", (qr) => {
-    qrcode.generate(qr, { small: true });
-    
-    const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
-    
-    console.log("\n=========================================");
-    console.log("🔗 הברקוד בטרמינל חתוך או לא נסרק? אין בעיה!");
-    console.log("העתק את הקישור הבא והדבק אותו בדפדפן שלך כדי לראות ברקוד נורמלי וברור:");
-    console.log(qrLink);
-    console.log("=========================================\n");
-    isWaReady = false;
-});
-
-waClient.on("ready", () => {
-    console.log("✅ הבוט מחובר לוואטסאפ בהצלחה!");
-    isWaReady = true;
-});
-
-waClient.on("auth_failure", msg => {
-    console.error("❌ שגיאה באימות הוואטסאפ:", msg);
-    isWaReady = false;
-});
-
-waClient.on("disconnected", (reason) => {
-    console.log("⚠️ וואטסאפ התנתק!", reason);
-    isWaReady = false;
-});
-
-// ✨ התיקון השני: אנחנו ממתינים קצת לפני שאנחנו מנסים לאתחל שוב, כדי שהשרת יירגע
-console.log("⏳ מנסה לאתחל את וואטסאפ בעוד 10 שניות...");
-setTimeout(() => {
-    try {
-        waClient.initialize();
-    } catch (e) {
-        console.log("❌ שגיאה כללית באתחול וואטסאפ:", e.message);
-    }
-}, 10000);
-
 let sentProducts = new Set();
 
 if (!fs.existsSync("./bot_data")) {
@@ -277,6 +220,32 @@ async function sendToChannel(text) {
   }
 }
 
+// פונקציה לשליחה דרך Green API
+async function sendToGreenApi(imgUrl, text) {
+    try {
+        const endpoint = `${GREEN_API_URL}/waInstance${GREEN_API_ID}/sendFileByUrl/${GREEN_API_TOKEN}`;
+        const payload = {
+            chatId: WA_CHAT_ID,
+            urlFile: imgUrl,
+            fileName: "deal.jpg",
+            caption: text
+        };
+        
+        await axios.post(endpoint, payload);
+        console.log("✅ הדיל והתמונה נשלחו לוואטסאפ דרך Green API בהצלחה!");
+        
+    } catch (err) {
+        console.log("⚠️ שגיאה בשליחת תמונה דרך Green API, מנסה לשלוח רק טקסט בינתיים. שגיאה:", err.message);
+        try {
+            const textEndpoint = `${GREEN_API_URL}/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`;
+            await axios.post(textEndpoint, { chatId: WA_CHAT_ID, message: text });
+            console.log("✅ טקסט הדיל נשלח לוואטסאפ בהצלחה!");
+        } catch (textErr) {
+            console.log("❌ שגיאה גם בשליחת הטקסט לוואטסאפ:", textErr.message);
+        }
+    }
+}
+
 async function fetchDeal() {
   if (isFetching) {
     console.log("⏳ חיפוש כבר פועל ברקע! עוצר את ההרצה הנוכחית כדי למנוע כפילויות.");
@@ -384,41 +353,18 @@ async function fetchDeal() {
           const messageBodyText = await generateMarketingText(selectedProduct.product_title, finalPrice);
           const imgUrl = `https://images.weserv.nl/?w=400&url=${selectedProduct.product_main_image_url.replace("https://", "")}`;
 
-          const channelMessageText = `![](${imgUrl})\n\n${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
+          const fullText = `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
+          const channelMessageText = `![](${imgUrl})\n\n${fullText}`;
           
           // שולחים קודם כל לערוץ
           console.log("🚀 שולח ל-API של הערוץ...");
           await sendToChannel(channelMessageText);
           
-          // עכשיו בודקים אם אפשר לשלוח גם לוואטסאפ
-          if (isWaReady) {
-            console.log("🚀 מוריד תמונה לוואטסאפ (עם סטופר של 15 שניות)...");
-            try {
-              const imageResponse = await axios.get(imgUrl, { 
-                  responseType: 'arraybuffer', 
-                  timeout: 15000 
-              });
-              
-              const mimetype = imageResponse.headers['content-type'] || 'image/jpeg';
-              const base64Data = Buffer.from(imageResponse.data, 'binary').toString('base64');
-              const media = new MessageMedia(mimetype, base64Data, 'deal.jpg');
-              
-              await waClient.sendMessage(WA_CHAT_ID, media, { caption: `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}` });
-              console.log("✅ הדיל והתמונה המוקטנת נשלחו לוואטסאפ בהצלחה!");
-              
-            } catch (waErr) {
-              console.log("⚠️ אתר הקטנת התמונות היה איטי מדי או קרס, מנסה לשלוח רק טקסט בינתיים. שגיאה:", waErr.message);
-              try {
-                  await waClient.sendMessage(WA_CHAT_ID, `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`);
-              } catch (textErr) {
-                  console.log("❌ שגיאה גם בשליחת הטקסט לוואטסאפ:", textErr.message);
-              }
-            }
-          } else {
-            console.log("⚠️ וואטסאפ כרגע מנותק או מחכה לברקוד. מדלג עליו להפעם וממשיך לעבוד רגיל בשביל הערוץ!");
-          }
+          // שולחים לוואטסאפ דרך Green API
+          console.log("🚀 שולח לוואטסאפ דרך Green API...");
+          await sendToGreenApi(imgUrl, fullText);
           
-          // רושם בפנקס ושומר בכספת החדשה!
+          // רושם בפנקס ושומר בכספת
           sentProducts.add(selectedProduct.product_id);
           fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
           
@@ -432,12 +378,6 @@ async function fetchDeal() {
 
       } catch (err) {
         console.log("❌ שגיאה כללית במהלך סריקת העמוד:", err.message);
-        
-        if (err.message.includes("timed out") || err.message.includes("Session closed")) {
-            console.log("🚨 דפדפן הוואטסאפ קפא לגמרי מרוב עומס זיכרון! מבצע ריסטרט חירום כדי להתאושש...");
-            process.exit(1); 
-        }
-        
         break; 
       }
     }
@@ -459,11 +399,6 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
 cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
 cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
 
-cron.schedule("0 3,7,11,15,19,23 * * *", () => {
-    console.log("🔄 מבצע רענון זיכרון יומי אוטומטי כל 4 שעות! מכבה את השרת כדי ש-Koyeb ידליק אותו נקי...");
-    process.exit(1); 
-}, cronOptions);
-
-console.log("⏳ השרת עלה. הערוץ מוכן לעבודה מיד, הוואטסאפ יצטרף כשיתחבר...");
+console.log("🚀 השרת עלה! עובדים עם Green API, הבוט קליל ומהיר מתמיד...");
 
 setInterval(() => {}, 1000);
