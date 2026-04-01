@@ -4,6 +4,7 @@ const axios = require("axios");
 const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
+const http = require("http"); // ✨ התוספת שלנו ללוח הבקרה!
 
 let openai = null;
 
@@ -30,7 +31,13 @@ const GREEN_API_URL = "https://7107.api.greenapi.com";
 const GREEN_API_ID = "7107571319"; 
 const GREEN_API_TOKEN = "7869922969b9444cba16f8edb61b6c7a1e63843e7c414b228c"; 
 
+// ==========================================
+// ✨ משתנים ללוח הבקרה (Dashboard) ✨
+// ==========================================
 let isFetching = false;
+let botStatus = "🟢 יושב בשקט וממתין לטיימר הבא...";
+let lastSentDealTime = "עדיין לא נשלח בסבב הזה";
+
 let sentProducts = new Set();
 
 if (!fs.existsSync("./bot_data")) {
@@ -49,17 +56,14 @@ let keywordPages = {};
 function getNextKeyword() {
   try {
     if (!fs.existsSync(KEYWORDS_FILE)) {
-      console.log(`⚠️ הקובץ ${KEYWORDS_FILE} לא נמצא! משתמש במילת ברירת מחדל: gadgets`);
       return "gadgets";
     }
 
     const data = fs.readFileSync(KEYWORDS_FILE, "utf-8");
     const parsedData = JSON.parse(data);
-    
     const keywords = parsedData.keywords;
 
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
-      console.log(`⚠️ לא נמצאו מילים תחת "keywords" בקובץ ה-JSON!`);
       return "gadgets";
     }
 
@@ -76,7 +80,6 @@ function getNextKeyword() {
     return selected;
 
   } catch (err) {
-    console.log(`❌ שגיאה בקריאת ${KEYWORDS_FILE}:`, err.message);
     return "gadgets"; 
   }
 }
@@ -84,50 +87,17 @@ function getNextKeyword() {
 function generateSign(params) {
   const sorted = Object.keys(params).sort();
   let base = APP_SECRET;
-
-  sorted.forEach(key => {
-    base += key + params[key];
-  });
-
+  sorted.forEach(key => { base += key + params[key]; });
   base += APP_SECRET;
-
-  return crypto
-    .createHash("md5")
-    .update(base)
-    .digest("hex")
-    .toUpperCase();
+  return crypto.createHash("md5").update(base).digest("hex").toUpperCase();
 }
 
 function extractLowestPrice(product) {
   let price = product.target_app_sale_price;
-  if (!price) {
-    return 0;
-  }
+  if (!price) return 0;
   price = price.toString();
-  if (price.includes("-")) {
-    price = price.split("-")[0];
-  }
+  if (price.includes("-")) price = price.split("-")[0];
   return parseFloat(price);
-}
-
-async function translateTitle(title) {
-  try {
-    const res = await axios.get(
-      "https://translate.googleapis.com/translate_a/single",
-      {
-        params: {
-          client: "gtx",
-          sl: "auto",
-          tl: "he",
-          dt: "t",
-          q: title
-        }
-      }
-    );
-    return res.data[0][0][0];
-  } catch (err) {
-    return title;
-  }
 }
 
 async function generateAffiliateLink(originalUrl) {
@@ -146,18 +116,8 @@ async function generateAffiliateLink(originalUrl) {
   params.sign = generateSign(params);
 
   try {
-    const response = await axios.get(
-      "https://api-sg.aliexpress.com/sync",
-      { params }
-    );
-
-    return response.data
-      ?.aliexpress_affiliate_link_generate_response
-      ?.resp_result
-      ?.result
-      ?.promotion_links
-      ?.promotion_link?.[0]
-      ?.promotion_link || null;
+    const response = await axios.get("https://api-sg.aliexpress.com/sync", { params });
+    return response.data?.aliexpress_affiliate_link_generate_response?.resp_result?.result?.promotion_links?.promotion_link?.[0]?.promotion_link || null;
   } catch (err) {
     return null;
   }
@@ -186,9 +146,7 @@ ${title}
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        { role: "user", content: prompt }
-      ],
+      messages: [{ role: "user", content: prompt }],
       temperature: 0.8
     });
 
@@ -202,62 +160,35 @@ async function sendToChannel(text) {
   try {
     await axios.post(
       CHANNEL_API_URL,
-      {
-        text: text,
-        author: "Deals Bot",
-        timestamp: new Date().toISOString()
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": API_KEY
-        }
-      }
+      { text: text, author: "Deals Bot", timestamp: new Date().toISOString() },
+      { headers: { "Content-Type": "application/json", "X-API-Key": API_KEY } }
     );
-    console.log("✅ הדיל נשלח לשרת/ערוץ שלך בהצלחה.");
   } catch (err) {
     console.log("❌ שגיאה בשליחה לשרת/ערוץ:", err.message);
   }
 }
 
-// פונקציה לשליחה דרך Green API
 async function sendToGreenApi(imgUrl, text) {
     try {
         const endpoint = `${GREEN_API_URL}/waInstance${GREEN_API_ID}/sendFileByUrl/${GREEN_API_TOKEN}`;
-        const payload = {
-            chatId: WA_CHAT_ID,
-            urlFile: imgUrl,
-            fileName: "deal.jpg",
-            caption: text
-        };
-        
+        const payload = { chatId: WA_CHAT_ID, urlFile: imgUrl, fileName: "deal.jpg", caption: text };
         await axios.post(endpoint, payload);
-        console.log("✅ הדיל והתמונה נשלחו לוואטסאפ דרך Green API בהצלחה!");
-        
     } catch (err) {
-        console.log("⚠️ שגיאה בשליחת תמונה דרך Green API, מנסה לשלוח רק טקסט בינתיים. שגיאה:", err.message);
         try {
             const textEndpoint = `${GREEN_API_URL}/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`;
             await axios.post(textEndpoint, { chatId: WA_CHAT_ID, message: text });
-            console.log("✅ טקסט הדיל נשלח לוואטסאפ בהצלחה!");
-        } catch (textErr) {
-            console.log("❌ שגיאה גם בשליחת הטקסט לוואטסאפ:", textErr.message);
-        }
+        } catch (textErr) {}
     }
 }
 
 async function fetchDeal() {
-  if (isFetching) {
-    console.log("⏳ חיפוש כבר פועל ברקע! עוצר את ההרצה הנוכחית כדי למנוע כפילויות.");
-    return;
-  }
+  if (isFetching) return;
   
   isFetching = true;
+  botStatus = "🔍 מתחיל סריקה של עליאקספרס..."; // עדכון לוח הבקרה
 
   try {
-    console.log("=== התחלת חיפוש דיל חדש ===");
     postCounter++;
-
     const currentKeyword = getNextKeyword();
     
     if (!keywordPages[currentKeyword]) {
@@ -270,7 +201,7 @@ async function fetchDeal() {
 
     while (!foundDeal && pagesSearched < MAX_PAGES_TO_SEARCH) {
       const currentPage = keywordPages[currentKeyword];
-      console.log(`🔍 מחפש את המילה "${currentKeyword}" בעמוד מספר ${currentPage}...`);
+      botStatus = `🔍 מחפש דילים חמים תחת המילה "${currentKeyword}" בעמוד ${currentPage}...`; // עדכון חי
 
       const params = {
         app_key: APP_KEY,
@@ -291,52 +222,29 @@ async function fetchDeal() {
       params.sign = generateSign(params);
 
       try {
-        const response = await axios.get(
-          "https://api-sg.aliexpress.com/sync",
-          { params }
-        );
-
-        const products = response.data
-          ?.aliexpress_affiliate_product_query_response
-          ?.resp_result
-          ?.result
-          ?.products
-          ?.product;
+        const response = await axios.get("https://api-sg.aliexpress.com/sync", { params });
+        const products = response.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product;
 
         if (!products?.length) {
-          console.log(`❌ לא נמצאו מוצרים בעמוד ${currentPage}. אולי הגענו לסוף. מאפס חזרה לעמוד 1.`);
           keywordPages[currentKeyword] = 1; 
           break; 
         }
 
-        console.log(`✅ נמצאו ${products.length} מוצרים בעמוד. מתחיל סינון...`);
-
         const minPrice = 10;
         let maxPrice = 250;
-        if (postCounter % 5 === 0) {
-          maxPrice = 300;
-        }
+        if (postCounter % 5 === 0) maxPrice = 300;
 
         let selectedProduct = null;
         let affiliateLink = null;
 
         for (const product of products) {
-          if (sentProducts.has(product.product_id)) {
-            continue;
-          }
-
-          const price = extractLowestPrice(product);
-          if (!price || price < minPrice || price > maxPrice) {
-            continue;
-          }
+          if (sentProducts.has(product.product_id)) continue;
           
-          if (product.sale_volume < 50) {
-            continue;
-          }
+          const price = extractLowestPrice(product);
+          if (!price || price < minPrice || price > maxPrice) continue;
+          if (product.sale_volume < 50) continue;
 
-          console.log(`✅ נמצא מוצר מתאים! מייצר לינק שותפים...`);
           const link = await generateAffiliateLink(product.product_detail_url);
-
           if (link) {
             selectedProduct = product;
             affiliateLink = link;
@@ -346,7 +254,8 @@ async function fetchDeal() {
 
         if (selectedProduct && affiliateLink) {
           foundDeal = true;
-          console.log("✅ נמצא מוצר זהב! מכין טקסט שיווקי משודרג...");
+          botStatus = "🚀 מכין טקסט שיווקי ומשגר את הדיל!"; // עדכון חי
+          
           const rawPrice = extractLowestPrice(selectedProduct);
           const finalPrice = Math.floor(rawPrice * 100) / 100;
           
@@ -356,40 +265,31 @@ async function fetchDeal() {
           const fullText = `${messageBodyText}\n\n🛒 לינק לרכישה:\n${affiliateLink}`;
           const channelMessageText = `![](${imgUrl})\n\n${fullText}`;
           
-          // שולחים קודם כל לערוץ
-          console.log("🚀 שולח ל-API של הערוץ...");
           await sendToChannel(channelMessageText);
-          
-          // שולחים לוואטסאפ דרך Green API
-          console.log("🚀 שולח לוואטסאפ דרך Green API...");
           await sendToGreenApi(imgUrl, fullText);
           
-          // רושם בפנקס ושומר בכספת
           sentProducts.add(selectedProduct.product_id);
           fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
+          
+          lastSentDealTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" }); // עדכון שעון
           
           break; 
 
         } else {
-          console.log(`⚠️ כל המוצרים בעמוד ${currentPage} כבר נשלחו או לא מתאימים. עובר מיד לעמוד ${currentPage + 1}...`);
           keywordPages[currentKeyword]++; 
           pagesSearched++;
         }
 
       } catch (err) {
-        console.log("❌ שגיאה כללית במהלך סריקת העמוד:", err.message);
         break; 
       }
-    }
-
-    if (!foundDeal && pagesSearched >= MAX_PAGES_TO_SEARCH) {
-      console.log(`⏳ חיפשתי ב-${MAX_PAGES_TO_SEARCH} עמודים ברצף למילה "${currentKeyword}" ולא מצאתי כלום. אני אנוח ואנסה מילה אחרת בחיפוש הבא.`);
     }
 
   } catch (error) {
     console.log("❌ שגיאה בלתי צפויה:", error.message);
   } finally {
     isFetching = false;
+    botStatus = "🟢 יושב בשקט וממתין לטיימר הבא..."; // חוזר למנוחה
   }
 }
 
@@ -399,6 +299,57 @@ cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
 cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
 cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
 
-console.log("🚀 השרת עלה! עובדים עם Green API, הבוט קליל ומהיר מתמיד...");
+// ==========================================
+// ✨ שרת לוח הבקרה (Dashboard) ✨
+// ==========================================
+const port = process.env.PORT || 8000;
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    
+    const html = `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="he">
+    <head>
+        <title>פאנל ניהול - בוט הדילים</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; text-align: center; margin: 0; padding: 20px; color: #333; }
+            .card { background: white; max-width: 500px; margin: 40px auto; padding: 30px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+            h1 { color: #1a73e8; margin-bottom: 5px; }
+            .subtitle { color: #666; font-size: 14px; margin-bottom: 25px; }
+            .status-box { background: #e6f4ea; border: 2px solid #34a853; padding: 15px; border-radius: 10px; font-size: 18px; font-weight: bold; color: #137333; margin-bottom: 25px; }
+            .stats { text-align: right; background: #f8f9fa; padding: 15px; border-radius: 10px; }
+            .stats p { margin: 10px 0; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+            .stats p:last-child { border-bottom: none; padding-bottom: 0; }
+            .refresh-btn { margin-top: 20px; background: #1a73e8; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-size: 16px; cursor: pointer; }
+            .refresh-btn:hover { background: #1557b0; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>🤖 בוט הדילים שלך</h1>
+            <div class="subtitle">מערכת חכמה מחוברת ל-Green API</div>
+            
+            <div class="status-box">
+                ${botStatus}
+            </div>
+            
+            <div class="stats">
+                <p><strong>🛍️ מוצרים שנשלחו עד היום:</strong> ${sentProducts.size}</p>
+                <p><strong>🕒 דיל אחרון נשלח ב:</strong> ${lastSentDealTime}</p>
+                <p><strong>📱 מצב חיבור לוואטסאפ:</strong> פעיל (API)</p>
+            </div>
+            
+            <button class="refresh-btn" onclick="location.reload()">🔄 רענן מצב</button>
+        </div>
+    </body>
+    </html>
+    `;
+    res.end(html);
+});
+
+server.listen(port, () => {
+    console.log(`🚀 השרת עלה! לוח הבקרה פועל וממתין לכניסות בפורט ${port}...`);
+});
 
 setInterval(() => {}, 1000);
