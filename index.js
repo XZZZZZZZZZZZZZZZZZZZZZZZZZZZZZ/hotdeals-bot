@@ -4,10 +4,10 @@ const axios = require("axios");
 const crypto = require("crypto");
 const cron = require("node-cron");
 const fs = require("fs");
-const http = require("http"); // ✨ התוספת שלנו ללוח הבקרה!
+const http = require("http");
+const url = require("url");
 
 let openai = null;
-
 if (process.env.OPENAI_API_KEY) {
   const OpenAI = require("openai");
   openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -25,18 +25,22 @@ const KEYWORDS_FILE = "keywords.json";
 const SENT_FILE = "./bot_data/sent_products.json";
 
 // ==========================================
-// ✨ הגדרות Green API החדשות והמהירות! ✨
+// ✨ הגדרות Green API ✨
 // ==========================================
 const GREEN_API_URL = "https://7107.api.greenapi.com"; 
 const GREEN_API_ID = "7107571319"; 
 const GREEN_API_TOKEN = "7869922969b9444cba16f8edb61b6c7a1e63843e7c414b228c"; 
 
 // ==========================================
-// ✨ משתנים ללוח הבקרה (Dashboard) ✨
+// ✨ משתני מערכת ולוח בקרה ✨
 // ==========================================
+let isBotActive = true; 
 let isFetching = false;
-let botStatus = "🟢 יושב בשקט וממתין לטיימר הבא...";
-let lastSentDealTime = "עדיין לא נשלח בסבב הזה";
+let botStatus = "🟢 המערכת פעילה וממתינה לדילים";
+let lastSentDealTime = "טרם נשלח בסבב הזה";
+let lastErrorTime = "אין שגיאות מאז ההפעלה";
+let lastErrorMessage = "המערכת יציבה לחלוטין";
+let dealHistory = [];
 
 let sentProducts = new Set();
 
@@ -45,8 +49,12 @@ if (!fs.existsSync("./bot_data")) {
 }
 
 if (fs.existsSync(SENT_FILE)) {
-  const data = JSON.parse(fs.readFileSync(SENT_FILE));
-  sentProducts = new Set(data);
+  try {
+    const data = JSON.parse(fs.readFileSync(SENT_FILE));
+    sentProducts = new Set(data);
+  } catch(e) {
+    console.log("⚠️ שגיאה בקריאת קובץ המוצרים שנשלחו, מתחיל חדש.");
+  }
 }
 
 let lastKeyword = null;
@@ -87,16 +95,29 @@ function getNextKeyword() {
 function generateSign(params) {
   const sorted = Object.keys(params).sort();
   let base = APP_SECRET;
-  sorted.forEach(key => { base += key + params[key]; });
+
+  sorted.forEach(key => {
+    base += key + params[key];
+  });
+
   base += APP_SECRET;
-  return crypto.createHash("md5").update(base).digest("hex").toUpperCase();
+
+  return crypto
+    .createHash("md5")
+    .update(base)
+    .digest("hex")
+    .toUpperCase();
 }
 
 function extractLowestPrice(product) {
   let price = product.target_app_sale_price;
-  if (!price) return 0;
+  if (!price) {
+    return 0;
+  }
   price = price.toString();
-  if (price.includes("-")) price = price.split("-")[0];
+  if (price.includes("-")) {
+    price = price.split("-")[0];
+  }
   return parseFloat(price);
 }
 
@@ -116,8 +137,18 @@ async function generateAffiliateLink(originalUrl) {
   params.sign = generateSign(params);
 
   try {
-    const response = await axios.get("https://api-sg.aliexpress.com/sync", { params });
-    return response.data?.aliexpress_affiliate_link_generate_response?.resp_result?.result?.promotion_links?.promotion_link?.[0]?.promotion_link || null;
+    const response = await axios.get(
+      "https://api-sg.aliexpress.com/sync",
+      { params }
+    );
+
+    return response.data
+      ?.aliexpress_affiliate_link_generate_response
+      ?.resp_result
+      ?.result
+      ?.promotion_links
+      ?.promotion_link?.[0]
+      ?.promotion_link || null;
   } catch (err) {
     return null;
   }
@@ -146,7 +177,9 @@ ${title}
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
+      messages: [
+        { role: "user", content: prompt }
+      ],
       temperature: 0.8
     });
 
@@ -160,32 +193,56 @@ async function sendToChannel(text) {
   try {
     await axios.post(
       CHANNEL_API_URL,
-      { text: text, author: "Deals Bot", timestamp: new Date().toISOString() },
-      { headers: { "Content-Type": "application/json", "X-API-Key": API_KEY } }
+      {
+        text: text,
+        author: "Deals Bot",
+        timestamp: new Date().toISOString()
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": API_KEY
+        }
+      }
     );
   } catch (err) {
-    console.log("❌ שגיאה בשליחה לשרת/ערוץ:", err.message);
+    console.log("❌ שגיאה בשליחה לערוץ:", err.message);
   }
 }
 
 async function sendToGreenApi(imgUrl, text) {
     try {
         const endpoint = `${GREEN_API_URL}/waInstance${GREEN_API_ID}/sendFileByUrl/${GREEN_API_TOKEN}`;
-        const payload = { chatId: WA_CHAT_ID, urlFile: imgUrl, fileName: "deal.jpg", caption: text };
+        const payload = {
+            chatId: WA_CHAT_ID,
+            urlFile: imgUrl,
+            fileName: "deal.jpg",
+            caption: text
+        };
+        
         await axios.post(endpoint, payload);
     } catch (err) {
         try {
             const textEndpoint = `${GREEN_API_URL}/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`;
             await axios.post(textEndpoint, { chatId: WA_CHAT_ID, message: text });
-        } catch (textErr) {}
+        } catch (textErr) {
+            console.log("❌ שגיאה בשליחת הטקסט לוואטסאפ:", textErr.message);
+        }
     }
 }
 
 async function fetchDeal() {
-  if (isFetching) return;
+  if (!isBotActive) {
+    console.log("💤 הבוט כבוי כרגע מלוח הבקרה. מדלג על מחזור החיפוש.");
+    return;
+  }
+
+  if (isFetching) {
+    return;
+  }
   
   isFetching = true;
-  botStatus = "🔍 מתחיל סריקה של עליאקספרס..."; // עדכון לוח הבקרה
+  botStatus = "🔍 מתחיל סריקה עמוקה בעליאקספרס...";
 
   try {
     postCounter++;
@@ -197,11 +254,11 @@ async function fetchDeal() {
 
     let foundDeal = false;
     let pagesSearched = 0;
-    const MAX_PAGES_TO_SEARCH = 50; 
+    const MAX_PAGES_TO_SEARCH = 50; // הנה הדיאטה שבוטלה - חזרנו ל-50 עמודים!
 
     while (!foundDeal && pagesSearched < MAX_PAGES_TO_SEARCH) {
       const currentPage = keywordPages[currentKeyword];
-      botStatus = `🔍 מחפש דילים חמים תחת המילה "${currentKeyword}" בעמוד ${currentPage}...`; // עדכון חי
+      botStatus = `🔍 מחפש דילים תחת המילה "${currentKeyword}" בעמוד ${currentPage}...`;
 
       const params = {
         app_key: APP_KEY,
@@ -222,8 +279,17 @@ async function fetchDeal() {
       params.sign = generateSign(params);
 
       try {
-        const response = await axios.get("https://api-sg.aliexpress.com/sync", { params });
-        const products = response.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product;
+        const response = await axios.get(
+          "https://api-sg.aliexpress.com/sync",
+          { params }
+        );
+
+        const products = response.data
+          ?.aliexpress_affiliate_product_query_response
+          ?.resp_result
+          ?.result
+          ?.products
+          ?.product;
 
         if (!products?.length) {
           keywordPages[currentKeyword] = 1; 
@@ -232,19 +298,29 @@ async function fetchDeal() {
 
         const minPrice = 10;
         let maxPrice = 250;
-        if (postCounter % 5 === 0) maxPrice = 300;
+        if (postCounter % 5 === 0) {
+          maxPrice = 300;
+        }
 
         let selectedProduct = null;
         let affiliateLink = null;
 
         for (const product of products) {
-          if (sentProducts.has(product.product_id)) continue;
-          
+          if (sentProducts.has(product.product_id)) {
+            continue;
+          }
+
           const price = extractLowestPrice(product);
-          if (!price || price < minPrice || price > maxPrice) continue;
-          if (product.sale_volume < 50) continue;
+          if (!price || price < minPrice || price > maxPrice) {
+            continue;
+          }
+          
+          if (product.sale_volume < 50) {
+            continue;
+          }
 
           const link = await generateAffiliateLink(product.product_detail_url);
+
           if (link) {
             selectedProduct = product;
             affiliateLink = link;
@@ -254,7 +330,7 @@ async function fetchDeal() {
 
         if (selectedProduct && affiliateLink) {
           foundDeal = true;
-          botStatus = "🚀 מכין טקסט שיווקי ומשגר את הדיל!"; // עדכון חי
+          botStatus = "🚀 מכין פוסט שיווקי ומשגר את הדיל!";
           
           const rawPrice = extractLowestPrice(selectedProduct);
           const finalPrice = Math.floor(rawPrice * 100) / 100;
@@ -271,7 +347,11 @@ async function fetchDeal() {
           sentProducts.add(selectedProduct.product_id);
           fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
           
-          lastSentDealTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" }); // עדכון שעון
+          lastSentDealTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" });
+          dealHistory.unshift({ time: lastSentDealTime.split(',')[1], title: selectedProduct.product_title });
+          if (dealHistory.length > 5) {
+              dealHistory.pop();
+          }
           
           break; 
 
@@ -286,13 +366,17 @@ async function fetchDeal() {
     }
 
   } catch (error) {
-    console.log("❌ שגיאה בלתי צפויה:", error.message);
+    lastErrorTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" });
+    lastErrorMessage = error.message;
   } finally {
     isFetching = false;
-    botStatus = "🟢 יושב בשקט וממתין לטיימר הבא..."; // חוזר למנוחה
+    botStatus = isBotActive ? "🟢 יושב בשקט וממתין לטיימר" : "🔴 הבוט כבוי על ידך";
   }
 }
 
+// ==========================================
+// ✨ כל הטיימירים המלאים! ✨
+// ==========================================
 const cronOptions = { timezone: "Asia/Jerusalem" };
 cron.schedule("*/20 8-23 * * 0-4", fetchDeal, cronOptions);
 cron.schedule("*/20 8-14 * * 5", fetchDeal, cronOptions);
@@ -300,56 +384,76 @@ cron.schedule("*/20 22-23 * * 6", fetchDeal, cronOptions);
 cron.schedule("*/20 0-1 * * 0", fetchDeal, cronOptions);
 
 // ==========================================
-// ✨ שרת לוח הבקרה (Dashboard) ✨
+// ✨ שרת לוח בקרה עם כפתור כיבוי ✨
 // ==========================================
 const port = process.env.PORT || 8000;
-const server = http.createServer((req, res) => {
+http.createServer((req, res) => {
+    const queryObject = url.parse(req.url, true).query;
+
+    if (queryObject.action === "toggle") {
+        isBotActive = !isBotActive;
+        botStatus = isBotActive ? "🟢 יושב בשקט וממתין לטיימר" : "🔴 הבוט כבוי על ידך";
+        res.writeHead(302, { 'Location': '/' });
+        res.end();
+        return;
+    }
+
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    
-    const html = `
+    res.end(`
     <!DOCTYPE html>
     <html dir="rtl" lang="he">
     <head>
-        <title>פאנל ניהול - בוט הדילים</title>
+        <title>שליטה בבוט הדילים</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; text-align: center; margin: 0; padding: 20px; color: #333; }
-            .card { background: white; max-width: 500px; margin: 40px auto; padding: 30px; border-radius: 15px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
-            h1 { color: #1a73e8; margin-bottom: 5px; }
-            .subtitle { color: #666; font-size: 14px; margin-bottom: 25px; }
-            .status-box { background: #e6f4ea; border: 2px solid #34a853; padding: 15px; border-radius: 10px; font-size: 18px; font-weight: bold; color: #137333; margin-bottom: 25px; }
-            .stats { text-align: right; background: #f8f9fa; padding: 15px; border-radius: 10px; }
-            .stats p { margin: 10px 0; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-            .stats p:last-child { border-bottom: none; padding-bottom: 0; }
-            .refresh-btn { margin-top: 20px; background: #1a73e8; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-size: 16px; cursor: pointer; }
-            .refresh-btn:hover { background: #1557b0; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #e9ecef; padding: 20px; text-align: center; }
+            .card { background: white; max-width: 500px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+            h2 { color: #343a40; margin-bottom: 20px; }
+            .status-banner { padding: 15px; border-radius: 10px; font-weight: bold; font-size: 16px; margin-bottom: 25px; transition: all 0.3s ease; background: ${isBotActive ? '#d4edda' : '#f8d7da'}; color: ${isBotActive ? '#155724' : '#721c24'}; border: 2px solid ${isBotActive ? '#c3e6cb' : '#f5c6cb'}; }
+            .btn { display: inline-block; padding: 15px 30px; font-size: 18px; color: white; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; font-weight: bold; width: 80%; transition: 0.2s; box-sizing: border-box; }
+            .btn:hover { opacity: 0.9; transform: scale(0.98); }
+            .btn-off { background: #dc3545; box-shadow: 0 4px 6px rgba(220, 53, 69, 0.3); }
+            .btn-on { background: #28a745; box-shadow: 0 4px 6px rgba(40, 167, 69, 0.3); }
+            .info-section { text-align: right; margin-top: 30px; font-size: 15px; color: #495057; }
+            .info-section p { margin: 10px 0; padding-bottom: 10px; border-bottom: 1px solid #f1f3f5; }
+            .history { text-align: right; margin-top: 20px; font-size: 14px; background: #f8f9fa; padding: 15px; border-radius: 10px; border: 1px solid #dee2e6; }
+            .history-title { font-weight: bold; margin-bottom: 10px; color: #495057; }
+            .history-item { padding: 5px 0; border-bottom: 1px dashed #ced4da; }
+            .history-item:last-child { border-bottom: none; }
+            .err { color: #dc3545; font-size: 13px; margin-top: 20px; background: #fff3f3; padding: 10px; border-radius: 8px; border-right: 4px solid #dc3545; text-align: right; }
+            .refresh-btn { margin-top: 25px; background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
         </style>
     </head>
     <body>
         <div class="card">
-            <h1>🤖 בוט הדילים שלך</h1>
-            <div class="subtitle">מערכת חכמה מחוברת ל-Green API</div>
+            <h2>🤖 לוח בקרה - בוט דילים</h2>
+            <div class="status-banner" id="statusBox">${botStatus}</div>
             
-            <div class="status-box">
-                ${botStatus}
+            <a href="/?action=toggle" class="btn ${isBotActive ? 'btn-off' : 'btn-on'}">
+                ${isBotActive ? '⏸️ כבה את הבוט (השהיה)' : '▶️ הפעל את הבוט מחדש'}
+            </a>
+
+            <div class="info-section">
+                <p>🛍️ סה"כ דילים שנשלחו אי פעם: <strong>${sentProducts.size}</strong></p>
+                <p>🕒 דיל אחרון שעלה לערוץ: <strong dir="ltr">${lastSentDealTime}</strong></p>
+            </div>
+
+            <div class="history">
+                <div class="history-title">📜 5 הדילים האחרונים:</div>
+                ${dealHistory.length > 0 ? dealHistory.map(d => `<div class="history-item">⏰ ${d.time} | ${d.title.substring(0,40)}...</div>`).join('') : '<div class="history-item">עדיין לא נשלחו דילים מאז הריסטרט</div>'}
+            </div>
+
+            <div class="err">
+                <strong>⚠️ יומן שגיאות מערכת:</strong><br>
+                זמן: <span dir="ltr">${lastErrorTime}</span><br>
+                פירוט: <em>${lastErrorMessage}</em>
             </div>
             
-            <div class="stats">
-                <p><strong>🛍️ מוצרים שנשלחו עד היום:</strong> ${sentProducts.size}</p>
-                <p><strong>🕒 דיל אחרון נשלח ב:</strong> ${lastSentDealTime}</p>
-                <p><strong>📱 מצב חיבור לוואטסאפ:</strong> פעיל (API)</p>
-            </div>
-            
-            <button class="refresh-btn" onclick="location.reload()">🔄 רענן מצב</button>
+            <button class="refresh-btn" onclick="location.reload()">🔄 רענן נתונים בזמן אמת</button>
         </div>
     </body>
     </html>
-    `;
-    res.end(html);
-});
+    `);
+}).listen(port);
 
-server.listen(port, () => {
-    console.log(`🚀 השרת עלה! לוח הבקרה פועל וממתין לכניסות בפורט ${port}...`);
-});
-
-setInterval(() => {}, 1000);
+console.log("🚀 המערכת עלתה! לוח הבקרה עם כפתור הכיבוי מוכן בפורט " + port);
