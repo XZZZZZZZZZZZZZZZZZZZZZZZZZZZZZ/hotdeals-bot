@@ -152,7 +152,8 @@ async function fetchDeal() {
     while (!foundDeal && pagesSearched < 50) {
       const params = {
         app_key: APP_KEY, method: "aliexpress.affiliate.product.query", timestamp: Date.now(), format: "json", v: "2.0", sign_method: "md5",
-        keywords: currentKeyword, page_no: keywordPages[currentKeyword], tracking_id: TRACKING_ID, ship_to_country: "IL", target_currency: "ILS", target_language: "HE", sort: "SALE_PRICE_ASC"
+        keywords: currentKeyword, page_no: keywordPages[currentKeyword], tracking_id: TRACKING_ID, ship_to_country: "IL", target_currency: "ILS", target_language: "HE", 
+        sort: "LAST_VOLUME_DESC" // 🟢 המיון עודכן לכאן - לפי הכי נמכרים
       };
       params.sign = generateSign(params);
       const response = await axios.get("https://api-sg.aliexpress.com/sync", { params });
