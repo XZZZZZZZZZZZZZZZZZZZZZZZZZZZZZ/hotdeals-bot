@@ -173,20 +173,84 @@ async function generateAffiliateLink(originalUrl) {
   } catch (err) { return null; }
 }
 
-async function generateMarketingText(title, price) {
-  if (!openai) return `🔥 דיל חדש!\n\n${title}\n\n💥 מחיר: ${price}₪ בלבד! 💥`;
+// 🖼️ בודקים שהתמונה באמת נטענת לפני ששולחים (אחרת יוצא פוסט עם תמונה שבורה)
+async function resolveImageUrl(product) {
+  const raw = (product.product_main_image_url || product.product_small_image_urls?.string?.[0] || "").trim();
+  if (!raw) return null;
+  const direct = raw.startsWith("//") ? "https:" + raw : raw.replace(/^http:\/\//, "https://");
+  const proxied = `https://images.weserv.nl/?w=400&url=${encodeURIComponent(direct.replace(/^https:\/\//, ""))}`;
+  for (const candidate of [proxied, direct]) {
+    try {
+      const res = await axios.get(candidate, { responseType: "arraybuffer", timeout: 10000 });
+      if (String(res.headers["content-type"] || "").startsWith("image/")) return candidate;
+    } catch (err) {}
+  }
+  return null;
+}
+
+// ✍️ גיוון בטקסטים - כל פוסט מקבל סגנון פתיחה, אימוג'י ושורת מחיר אחרים
+const POST_STYLES = [
+  "פתח בשאלה מסקרנת שפונה ישירות לקורא",
+  "פתח בהתלהבות מטורפת, כאילו מצאת אוצר",
+  "פתח בתחושת דחיפות - הדיל הזה לא יחכה הרבה זמן",
+  "פתח בבעיה יומיומית שהמוצר הזה פותר",
+  "פתח במספר מרשים מתוך הנתונים (מכירות / דירוג / הנחה)",
+  "פתח בסגנון 'גילינו משהו שחייבים לשתף'",
+  "פתח בהשוואה למה שמשלמים על זה בחנות בארץ",
+  "פתח במשפט קצר וחד של 3-4 מילים עם סימן קריאה",
+];
+const BULLET_EMOJIS = ["✅", "🔥", "⚡", "⭐", "👌", "💪", "🎯", "✔️", "🚀"];
+const PRICE_LINES = [
+  p => `💥 מחיר: ${p}₪ בלבד! 💥`,
+  p => `🔥 רק ${p}₪! 🔥`,
+  p => `💸 במחיר מטורף של ${p}₪ בלבד!`,
+  p => `🤑 שווה כל שקל - רק ${p}₪!`,
+  p => `⚡ מחיר דיל: ${p}₪ ⚡`,
+  p => `🎉 כל זה ב-${p}₪ בלבד!`,
+];
+let recentOpenings = [];
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+async function generateMarketingText(product, price) {
+  const title = product.product_title;
+  const priceLine = pick(PRICE_LINES)(price);
+  const fallback = `${pick(["🔥 דיל חדש!", "🚨 דיל חם!", "😍 תראו מה מצאנו!", "⚡ דיל בזק!"])}\n\n${title}\n\n${priceLine}`;
+  if (!openai) return fallback;
+
+  // נתונים אמיתיים מהמוצר, כדי שההתלהבות תישען על עובדות ולא על המצאות
+  const facts = [];
+  const sales = getSales(product);
+  if (sales) facts.push(`נמכר כבר ${sales.toLocaleString("en-US")} פעמים`);
+  const rating = getRating(product);
+  if (rating) facts.push(`${rating}% דירוג חיובי מקונים`);
+  const discount = parseFloat(String(product.discount || "0").replace("%", "")) || 0;
+  if (discount >= 10) facts.push(`${discount}% הנחה`);
+  const original = parseFloat(String(product.target_original_price || "0").split("-")[0]) || 0;
+  if (original > price * 1.1) facts.push(`מחיר מקורי ${Math.round(original)}₪`);
+
+  const bullets = 3 + Math.floor(Math.random() * 3);
   try {
     const prompt = `
-משימה: כתוב פוסט שיווקי קצר בעברית לדיל מעליאקספרס לקהל חרדי שומר תורה ומצוות.
-חוקי סינון: 1. אם המוצר אינו צנוע או שהוא סמל דתי נוצרי (צלב), החזר אך ורק את המילה: REJECT.
-2. אם המוצר תקין, כתוב פוסט ללא כותרות, 4 יתרונות בנקודות ✅. השתמש בשפה נקייה ומכובדת בלבד (ללא מילים כמו סקסי).
-3. בסוף הפוסט הוסף: 💥 מחיר: ${price}₪ בלבד! 💥\nשם המוצר: ${title}`;
-    
+משימה: כתוב פוסט שיווקי קצר, סוחף ומפוצץ באנרגיה בעברית לדיל מעליאקספרס, לקהל חרדי שומר תורה ומצוות.
+חוק סינון: אם המוצר אינו צנוע או שהוא סמל דתי נוצרי (צלב), החזר אך ורק את המילה: REJECT.
+אם המוצר תקין:
+- ${pick(POST_STYLES)}.
+- אחרי הפתיחה: ${bullets} יתרונות בנקודות, כל נקודה מתחילה ב-${pick(BULLET_EMOJIS)} ומשפט קצר וקולע.
+- טון נלהב ומרגש עם קריאות התלהבות, כמו חבר שממליץ בהתרגשות - אבל בשפה נקייה ומכובדת בלבד (בלי מילים כמו סקסי).
+${facts.length ? `- אפשר לשלב את הנתונים האמיתיים האלה: ${facts.join(", ")}. אל תמציא מספרים אחרים.` : "- אל תמציא מספרים, מכירות או דירוגים."}
+${recentOpenings.length ? `- אל תפתח כמו הפוסטים הקודמים: ${recentOpenings.map(o => `"${o}"`).join(" | ")}` : ""}
+- בלי כותרות, בלי מחיר, בלי קישור ובלי שם המוצר בסוף (הם יתווספו אוטומטית).
+שם המוצר: ${title}`;
+
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0.7
+      model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 1.0
     });
-    return completion.choices[0].message.content;
-  } catch (err) { return `🔥 דיל חדש!\n\n${title}\n\n💥 מחיר: ${price}₪ בלבד! 💥`; }
+    const body = completion.choices[0].message.content.trim();
+    if (body.includes("REJECT")) return "REJECT";
+    recentOpenings.push(body.split("\n")[0].slice(0, 60));
+    if (recentOpenings.length > 5) recentOpenings.shift();
+    return `${body}\n\n${priceLine}`;
+  } catch (err) { return fallback; }
 }
 
 async function sendToChannel(text) {
@@ -224,15 +288,18 @@ async function fetchDeal() {
         const price = extractLowestPrice(product);
         const link = await generateAffiliateLink(product.product_detail_url);
         if (link) {
+          // מוצר בלי תמונה תקינה - מדלגים לבא בתור
+          const imgUrl = await resolveImageUrl(product);
+          if (!imgUrl) continue;
+
           const finalPrice = Math.floor(price * 100) / 100;
-          const messageBodyText = await generateMarketingText(product.product_title, finalPrice);
+          const messageBodyText = await generateMarketingText(product, finalPrice);
           
           // סינון AI
           if (messageBodyText.includes("REJECT")) { sentProducts.add(product.product_id); continue; }
 
           foundDeal = true;
-          const imgUrl = `https://images.weserv.nl/?w=400&url=${product.product_main_image_url.replace("https://", "")}`;
-          const fullText = `${messageBodyText}\n\n🛒 לינק לרכישה:\n${link}`;
+          const fullText = `${messageBodyText}\n\n${pick(["🛒 לינק לרכישה:", "👇 להזמנה:", "🛍️ לקנייה מהירה:", "👉 לינק לדיל:"])}\n${link}`;
           
           await sendToChannel(`![](${imgUrl})\n\n${fullText}`);
           await sendToGreenApi(imgUrl, fullText);
