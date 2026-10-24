@@ -31,7 +31,15 @@ const SENT_FILE = "./bot_data/sent_products.json";
 const USERS_FILE = "./bot_data/users.json";
 
 // 🛡️ רשימת מילים אסורות
-const BLACKLIST_WORDS = ["צלב", "cross", "סקסי", "sexy", "jesus", "christ", "church", "תפילה", "עבודה זרה", "מיני", "mini", "short dress", "bikini", "ביקיני"];
+// ("mini" לבד חסם גם מוצרים תקינים כמו מקרן מיני / מאוורר מיני, לכן מסננים רק חצאית/שמלת מיני)
+const BLACKLIST_WORDS = ["צלב", "cross", "סקסי", "sexy", "jesus", "christ", "church", "תפילה", "עבודה זרה", "חצאית מיני", "שמלת מיני", "mini skirt", "mini dress", "short dress", "bikini", "ביקיני", "lingerie", "הלבשה תחתונה"];
+
+// 📈 הגדרות "מה הולך" - רק מוצרים שהרבה אנשים כבר קונים ומרוצים מהם
+const MIN_SALES = 300;        // מינימום מכירות אחרונות
+const MIN_RATING = 90;        // מינימום אחוז דירוג חיובי
+const MIN_PRICE = 10;
+const MAX_PRICE = 350;
+const PAGES_PER_SOURCE = 3;   // כמה עמודים לסרוק מכל מקור (העמודים הראשונים = הכי נמכרים)
 
 // ==========================================
 // ✨ משתני מערכת, סטטוס ומשתמשים ✨
@@ -61,9 +69,8 @@ if (fs.existsSync(USERS_FILE)) {
 
 let sessions = {}; // שומר את מי שמחובר עכשיו
 
-let lastKeyword = null;
+let recentKeywords = [];
 let postCounter = 0;
-let keywordPages = {};
 
 // ==========================================
 // ⚙️ פונקציות הבוט (מנוע הליבה) ⚙️
@@ -72,11 +79,14 @@ function getNextKeyword() {
   try {
     if (!fs.existsSync(KEYWORDS_FILE)) return "gadgets";
     const data = JSON.parse(fs.readFileSync(KEYWORDS_FILE, "utf-8"));
-    const keywords = data.keywords;
-    if (!keywords || keywords.length === 0) return "gadgets";
-    let selected;
-    do { selected = keywords[Math.floor(Math.random() * keywords.length)]; } while (selected === lastKeyword && keywords.length > 1);
-    lastKeyword = selected;
+    const keywords = [...new Set(data.keywords || [])];
+    if (keywords.length === 0) return "gadgets";
+    // לא חוזרים על אחת מ-5 מילות החיפוש האחרונות, כדי לגוון בין קטגוריות
+    const fresh = keywords.filter(k => !recentKeywords.includes(k));
+    const pool = fresh.length ? fresh : keywords;
+    const selected = pool[Math.floor(Math.random() * pool.length)];
+    recentKeywords.push(selected);
+    if (recentKeywords.length > Math.min(5, keywords.length - 1)) recentKeywords.shift();
     return selected;
   } catch (err) { return "gadgets"; }
 }
@@ -93,6 +103,62 @@ function extractLowestPrice(product) {
   let price = product.target_app_sale_price || "0";
   price = price.toString().split("-")[0];
   return parseFloat(price);
+}
+
+// עליאקספרס מחזירים את כמות המכירות בשדה lastest_volume (כן, עם שגיאת הכתיב), ולא sale_volume
+function getSales(product) {
+  return parseInt(product.lastest_volume || product.sale_volume || 0, 10) || 0;
+}
+
+function getRating(product) {
+  return parseFloat(String(product.evaluate_rate || "0").replace("%", "")) || 0;
+}
+
+// ציון "כמה זה הולך": מכירות הן העיקר, ואחריהן דירוג והנחה
+function scoreProduct(product) {
+  const sales = getSales(product);
+  const rating = getRating(product);
+  const discount = parseFloat(String(product.discount || "0").replace("%", "")) || 0;
+  return Math.log10(sales + 1) * 10 + (rating - MIN_RATING) * 0.5 + discount * 0.05;
+}
+
+// hotproduct.query = המוצרים החמים של עליאקספרס, product.query = חיפוש רגיל לפי הכי נמכרים
+async function queryProducts(method, keyword, page) {
+  const params = {
+    app_key: APP_KEY, method, timestamp: Date.now(), format: "json", v: "2.0", sign_method: "md5",
+    keywords: keyword, page_no: page, page_size: 50, tracking_id: TRACKING_ID, ship_to_country: "IL", target_currency: "ILS", target_language: "HE",
+    sort: "LAST_VOLUME_DESC"
+  };
+  params.sign = generateSign(params);
+  try {
+    const response = await axios.get("https://api-sg.aliexpress.com/sync", { params });
+    const key = method.replace(/\./g, "_") + "_response";
+    return response.data?.[key]?.resp_result?.result?.products?.product || [];
+  } catch (err) { return []; }
+}
+
+async function findCandidates(keyword) {
+  const seen = new Set();
+  const candidates = [];
+  for (const method of ["aliexpress.affiliate.hotproduct.query", "aliexpress.affiliate.product.query"]) {
+    for (let page = 1; page <= PAGES_PER_SOURCE; page++) {
+      const products = await queryProducts(method, keyword, page);
+      if (!products.length) break;
+      for (const product of products) {
+        if (seen.has(product.product_id) || sentProducts.has(product.product_id)) continue;
+        seen.add(product.product_id);
+        const title = (product.product_title || "").toLowerCase();
+        if (BLACKLIST_WORDS.some(word => title.includes(word))) continue;
+        const price = extractLowestPrice(product);
+        if (price < MIN_PRICE || price > MAX_PRICE) continue;
+        if (getSales(product) < MIN_SALES) continue;
+        const rating = getRating(product);
+        if (rating && rating < MIN_RATING) continue;
+        candidates.push(product);
+      }
+    }
+  }
+  return candidates.sort((a, b) => scoreProduct(b) - scoreProduct(a));
 }
 
 async function generateAffiliateLink(originalUrl) {
@@ -145,38 +211,24 @@ async function fetchDeal() {
   if (!isBotActive || isFetching) return;
   isFetching = true; botStatus = "🔍 מתחיל סריקה עמוקה בעליאקספרס...";
   try {
-    postCounter++; const currentKeyword = getNextKeyword();
-    if (!keywordPages[currentKeyword]) keywordPages[currentKeyword] = 1;
-    let foundDeal = false; let pagesSearched = 0;
+    postCounter++;
+    let foundDeal = false;
 
-    while (!foundDeal && pagesSearched < 50) {
-      const params = {
-        app_key: APP_KEY, method: "aliexpress.affiliate.product.query", timestamp: Date.now(), format: "json", v: "2.0", sign_method: "md5",
-        keywords: currentKeyword, page_no: keywordPages[currentKeyword], tracking_id: TRACKING_ID, ship_to_country: "IL", target_currency: "ILS", target_language: "HE", 
-        sort: "LAST_VOLUME_DESC" // 🟢 המיון עודכן לכאן - לפי הכי נמכרים
-      };
-      params.sign = generateSign(params);
-      const response = await axios.get("https://api-sg.aliexpress.com/sync", { params });
-      const products = response.data?.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product;
+    // תמיד מתחילים מהעמודים הראשונים (הכי נמכרים) ומדלגים על מה שכבר נשלח.
+    // אם למילת חיפוש אין כרגע מוצר חם מספיק - עוברים למילה אחרת (עד 3 ניסיונות)
+    for (let attempt = 0; attempt < 3 && !foundDeal; attempt++) {
+      const currentKeyword = getNextKeyword();
+      const candidates = await findCandidates(currentKeyword);
 
-      if (!products?.length) { keywordPages[currentKeyword] = 1; break; }
-
-      for (const product of products) {
-        if (sentProducts.has(product.product_id)) continue;
-
-        // סינון רשימה שחורה
-        if (BLACKLIST_WORDS.some(word => product.product_title.toLowerCase().includes(word))) continue;
-
+      for (const product of candidates.slice(0, 15)) {
         const price = extractLowestPrice(product);
-        if (price < 10 || price > 350 || product.sale_volume < 40) continue;
-
         const link = await generateAffiliateLink(product.product_detail_url);
         if (link) {
           const finalPrice = Math.floor(price * 100) / 100;
           const messageBodyText = await generateMarketingText(product.product_title, finalPrice);
           
           // סינון AI
-          if (messageBodyText.includes("REJECT")) continue;
+          if (messageBodyText.includes("REJECT")) { sentProducts.add(product.product_id); continue; }
 
           foundDeal = true;
           const imgUrl = `https://images.weserv.nl/?w=400&url=${product.product_main_image_url.replace("https://", "")}`;
@@ -194,7 +246,6 @@ async function fetchDeal() {
           break;
         }
       }
-      keywordPages[currentKeyword]++; pagesSearched++;
     }
   } catch (error) {
     lastErrorTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" }); lastErrorMessage = error.message;
