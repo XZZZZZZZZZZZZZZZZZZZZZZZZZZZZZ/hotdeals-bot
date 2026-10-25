@@ -264,7 +264,8 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 async function generateMarketingText(product, price) {
   const title = product.product_title;
-  const priceLine = pick(PRICE_LINES)(price) + "\n⏳ המחיר במבצע נכון לרגע הפרסום, משתנה לפי דגם/צבע ועשוי להשתנות";
+  // עליאקספרס מציגה מחיר בלי מע"מ ("Tax excluded") - המע"מ והמשלוח מתווספים רק בקופה
+  const priceLine = pick(PRICE_LINES)(price) + "\n⏳ מחיר המבצע נכון לרגע הפרסום, לפני מע\"מ ומשלוח (מתווספים בקופה), ומשתנה לפי דגם/צבע";
   // בלי AI אין טקסט טוב ואין סינון צניעות - לא מפרסמים בכלל (במקום לשלוח רק את שם המוצר)
   if (!openai) { lastErrorTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" }); lastErrorMessage = "אין מפתח OpenAI - לא נשלחים דילים"; return "AI_ERROR"; }
 
