@@ -35,8 +35,9 @@ const USERS_FILE = "./bot_data/users.json";
 const BLACKLIST_WORDS = ["צלב", "cross", "סקסי", "sexy", "jesus", "christ", "church", "תפילה", "עבודה זרה", "חצאית מיני", "שמלת מיני", "mini skirt", "mini dress", "short dress", "bikini", "ביקיני", "lingerie", "הלבשה תחתונה"];
 
 // 📈 הגדרות "מה הולך" - רק מוצרים שהרבה אנשים כבר קונים ומרוצים מהם
-const MIN_SALES = 300;        // מינימום מכירות אחרונות
-const MIN_RATING = 90;        // מינימום אחוז דירוג חיובי
+const MIN_SALES = 1000;       // מינימום מכירות אחרונות
+const MIN_RATING = 95;        // מינימום אחוז דירוג חיובי
+const MAX_VARIANT_SPREAD = 1.6; // דגם יקר פי 1.6+ מהזול = כנראה "פיתיון" (המחיר הזול הוא לאביזר בלבד) - מדלגים
 const MIN_PRICE = 10;
 const MAX_PRICE = 350;
 const PAGES_PER_SOURCE = 3;   // כמה עמודים לסרוק מכל מקור (העמודים הראשונים = הכי נמכרים)
@@ -99,10 +100,16 @@ function generateSign(params) {
   return crypto.createHash("md5").update(base).digest("hex").toUpperCase();
 }
 
+// מחיר האתר הרגיל (לא מחיר אפליקציה / קונים חדשים), כטווח בין הדגם הזול ליקר
+function priceRange(product) {
+  const raw = String(product.target_sale_price || product.target_app_sale_price || "0");
+  const parts = raw.split("-").map(p => parseFloat(p)).filter(n => !isNaN(n));
+  if (!parts.length) return { min: 0, max: 0 };
+  return { min: Math.min(...parts), max: Math.max(...parts) };
+}
+
 function extractLowestPrice(product) {
-  let price = product.target_app_sale_price || "0";
-  price = price.toString().split("-")[0];
-  return parseFloat(price);
+  return priceRange(product).min;
 }
 
 // עליאקספרס מחזירים את כמות המכירות בשדה lastest_volume (כן, עם שגיאת הכתיב), ולא sale_volume
@@ -149,11 +156,12 @@ async function findCandidates(keyword) {
         seen.add(product.product_id);
         const title = (product.product_title || "").toLowerCase();
         if (BLACKLIST_WORDS.some(word => title.includes(word))) continue;
-        const price = extractLowestPrice(product);
+        const { min: price, max: maxPrice } = priceRange(product);
         if (price < MIN_PRICE || price > MAX_PRICE) continue;
+        if (maxPrice > price * MAX_VARIANT_SPREAD) continue;
         if (getSales(product) < MIN_SALES) continue;
         const rating = getRating(product);
-        if (rating && rating < MIN_RATING) continue;
+        if (!rating || rating < MIN_RATING) continue;
         candidates.push(product);
       }
     }
@@ -213,7 +221,8 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 async function generateMarketingText(product, price) {
   const title = product.product_title;
-  const priceLine = pick(PRICE_LINES)(price);
+  const variantNote = priceRange(product).max > price * 1.05 ? "\n(המחיר לדגם הבסיסי, משתנה לפי צבע/דגם)" : "";
+  const priceLine = pick(PRICE_LINES)(price) + variantNote + "\n⏳ המחיר נכון לרגע הפרסום ועשוי להשתנות";
   const fallback = `${pick(["🔥 דיל חדש!", "🚨 דיל חם!", "😍 תראו מה מצאנו!", "⚡ דיל בזק!"])}\n\n${title}\n\n${priceLine}`;
   if (!openai) return fallback;
 
