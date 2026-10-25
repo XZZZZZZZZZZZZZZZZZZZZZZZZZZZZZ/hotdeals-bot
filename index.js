@@ -102,10 +102,37 @@ function generateSign(params) {
   return crypto.createHash("md5").update(base).digest("hex").toUpperCase();
 }
 
-// מחיר האתר הרגיל (לא מחיר אפליקציה / קונים חדשים), כטווח בין הדגם הזול ליקר
+// 💱 עליאקספרס מחזירה את המחיר בדולר, ואנחנו ממירים לשקלים בעצמנו לפי שער דולר אמיתי ועדכני
+// (ההמרה של עליאקספרס לשקל לא תאמה למחיר האמיתי)
+let usdIlsRate = null, usdIlsUpdated = 0;
+const CONVERSION_MARGIN = 1.02; // עליאקספרס גובה לפי שער גבוה בכ-2% משער הבנק
+async function refreshUsdIls() {
+  if (usdIlsRate && Date.now() - usdIlsUpdated < 6 * 3600 * 1000) return usdIlsRate;
+  const sources = [
+    ["https://api.frankfurter.app/latest?from=USD&to=ILS", d => d?.rates?.ILS],
+    ["https://open.er-api.com/v6/latest/USD", d => d?.rates?.ILS],
+  ];
+  for (const [rateUrl, readRate] of sources) {
+    try {
+      const rate = readRate((await axios.get(rateUrl, { timeout: 10000 })).data);
+      if (rate > 2 && rate < 6) { usdIlsRate = rate; usdIlsUpdated = Date.now(); return rate; }
+    } catch (err) {}
+  }
+  return usdIlsRate; // השער האחרון שהצלחנו להביא (או null אם אף פעם לא הצלחנו)
+}
+
+function toIls(value, currency) {
+  const n = parseFloat(value);
+  if (isNaN(n)) return NaN;
+  if (currency === "ILS") return n;
+  return usdIlsRate ? n * usdIlsRate * CONVERSION_MARGIN : NaN;
+}
+
+// מחיר האתר הרגיל (לא מחיר אפליקציה / קונים חדשים) בשקלים, כטווח בין הדגם הזול ליקר
 function priceRange(product) {
-  const raw = String(product.target_sale_price || product.target_app_sale_price || "0");
-  const parts = raw.split("-").map(p => parseFloat(p)).filter(n => !isNaN(n));
+  const raw = String(product.target_sale_price || "0");
+  const currency = product.target_sale_price_currency || "USD";
+  const parts = raw.split("-").map(p => toIls(p, currency)).filter(n => !isNaN(n) && n > 0);
   if (!parts.length) return { min: 0, max: 0 };
   return { min: Math.min(...parts), max: Math.max(...parts) };
 }
@@ -137,7 +164,7 @@ function scoreProduct(product) {
 async function queryProducts(method, keyword, page) {
   const params = {
     app_key: APP_KEY, method, timestamp: Date.now(), format: "json", v: "2.0", sign_method: "md5",
-    keywords: keyword, page_no: page, page_size: 50, tracking_id: TRACKING_ID, ship_to_country: "IL", target_currency: "ILS", target_language: "EN",
+    keywords: keyword, page_no: page, page_size: 50, tracking_id: TRACKING_ID, ship_to_country: "IL", target_currency: "USD", target_language: "EN",
     sort: "LAST_VOLUME_DESC"
   };
   params.sign = generateSign(params);
@@ -249,7 +276,7 @@ async function generateMarketingText(product, price) {
   if (rating) facts.push(`${rating}% דירוג חיובי מקונים`);
   const discount = parseFloat(String(product.discount || "0").replace("%", "")) || 0;
   if (discount >= 10) facts.push(`${discount}% הנחה`);
-  const original = parseFloat(String(product.target_original_price || "0").split("-")[0]) || 0;
+  const original = toIls(String(product.target_original_price || "0").split("-")[0], product.target_original_price_currency || "USD") || 0;
   if (original > price * 1.1) facts.push(`מחיר מקורי ${Math.round(original)}₪`);
 
   const bullets = 3 + Math.floor(Math.random() * 3);
@@ -316,6 +343,13 @@ async function fetchDeal() {
   try {
     postCounter++;
     let foundDeal = false;
+
+    // בלי שער דולר עדכני אי אפשר לחשב מחיר נכון - לא שולחים
+    if (!(await refreshUsdIls())) {
+      lastErrorTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" });
+      lastErrorMessage = "לא הצלחתי להביא שער דולר - לא נשלחים דילים";
+      return;
+    }
 
     // תמיד מתחילים מהעמודים הראשונים (הכי נמכרים) ומדלגים על מה שכבר נשלח.
     // אם למילת חיפוש אין כרגע מוצר חם מספיק - עוברים למילה אחרת (עד 3 ניסיונות)
