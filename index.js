@@ -32,13 +32,15 @@ const USERS_FILE = "./bot_data/users.json";
 
 // 🛡️ רשימת מילים אסורות
 // ("mini" לבד חסם גם מוצרים תקינים כמו מקרן מיני / מאוורר מיני, לכן מסננים רק חצאית/שמלת מיני)
-const BLACKLIST_WORDS = ["צלב", "cross", "סקסי", "sexy", "jesus", "christ", "church", "תפילה", "עבודה זרה", "חצאית מיני", "שמלת מיני", "mini skirt", "mini dress", "short dress", "bikini", "ביקיני", "lingerie", "הלבשה תחתונה"];
+const BLACKLIST_WORDS = ["צלב", "cross", "סקסי", "sexy", "jesus", "christ", "church", "תפילה", "עבודה זרה", "חצאית מיני", "שמלת מיני", "mini skirt", "mini dress", "short dress", "bikini", "ביקיני", "lingerie", "הלבשה תחתונה",
+  // דמויות מצוירות / אנימה / קיי-פופ - לא רלוונטי לקהל
+  "anime", "אנימה", "bt21", "bts", "kpop", "k-pop", "sanrio", "סנריו", "kitty", "קיטי", "kuromi", "pokemon", "פוקימון", "disney", "דיסני", "marvel", "cartoon", "halloween", "christmas", "skull", "tattoo", "underwear", "swimsuit", "bra "];
 
 // 📈 הגדרות "מה הולך" - רק מוצרים שהרבה אנשים כבר קונים ומרוצים מהם
 const MIN_SALES = 1000;       // מינימום מכירות אחרונות
 const MIN_RATING = 95;        // מינימום אחוז דירוג חיובי
 const MAX_VARIANT_SPREAD = 1.6; // דגם יקר פי 1.6+ מהזול = כנראה "פיתיון" (המחיר הזול הוא לאביזר בלבד) - מדלגים
-const MIN_PRICE = 10;
+const MIN_PRICE = 20;         // מתחת לזה זה בעיקר "שטויות" זולות
 const MAX_PRICE = 350;
 const PAGES_PER_SOURCE = 3;   // כמה עמודים לסרוק מכל מקור (העמודים הראשונים = הכי נמכרים)
 
@@ -126,14 +128,16 @@ function scoreProduct(product) {
   const sales = getSales(product);
   const rating = getRating(product);
   const discount = parseFloat(String(product.discount || "0").replace("%", "")) || 0;
-  return Math.log10(sales + 1) * 10 + (rating - MIN_RATING) * 0.5 + discount * 0.05;
+  // מוצר "שווה" (לא רק הכי זול) מקבל בונוס, כדי שלא יעלו רק צעצועים של 10 ש"ח
+  const price = extractLowestPrice(product);
+  return Math.log10(sales + 1) * 10 + (rating - MIN_RATING) * 0.5 + discount * 0.05 + Math.log10(price + 1) * 6;
 }
 
 // hotproduct.query = המוצרים החמים של עליאקספרס, product.query = חיפוש רגיל לפי הכי נמכרים
 async function queryProducts(method, keyword, page) {
   const params = {
     app_key: APP_KEY, method, timestamp: Date.now(), format: "json", v: "2.0", sign_method: "md5",
-    keywords: keyword, page_no: page, page_size: 50, tracking_id: TRACKING_ID, ship_to_country: "IL", target_currency: "ILS", target_language: "HE",
+    keywords: keyword, page_no: page, page_size: 50, tracking_id: TRACKING_ID, ship_to_country: "IL", target_currency: "ILS", target_language: "EN",
     sort: "LAST_VOLUME_DESC"
   };
   params.sign = generateSign(params);
@@ -142,6 +146,16 @@ async function queryProducts(method, keyword, page) {
     const key = method.replace(/\./g, "_") + "_response";
     return response.data?.[key]?.resp_result?.result?.products?.product || [];
   } catch (err) { return []; }
+}
+
+// המוצר חייב להיות באמת מה שחיפשנו: שם המוצר (באנגלית) צריך להכיל את מילת המפתח העיקרית
+// ("smart watch" -> "watch"), אחרת החיפוש מחזיר דברים אקראיים כמו מחזיקי מפתחות
+const GENERIC_WORDS = new Set(["for", "with", "and", "the", "men's", "men", "kids", "portable", "smart", "electric", "products", "gadgets", "accessories", "set", "kit", "wireless"]);
+function isRelevant(title, keyword) {
+  const words = keyword.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !GENERIC_WORDS.has(w));
+  if (!words.length) return true;
+  const head = words[words.length - 1].replace(/s$/, "");
+  return title.includes(head);
 }
 
 async function findCandidates(keyword) {
@@ -156,6 +170,7 @@ async function findCandidates(keyword) {
         seen.add(product.product_id);
         const title = (product.product_title || "").toLowerCase();
         if (BLACKLIST_WORDS.some(word => title.includes(word))) continue;
+        if (!isRelevant(title, keyword)) continue;
         const { min: price, max: maxPrice } = priceRange(product);
         if (price < MIN_PRICE || price > MAX_PRICE) continue;
         if (maxPrice > price * MAX_VARIANT_SPREAD) continue;
@@ -208,23 +223,23 @@ const POST_STYLES = [
   "פתח במשפט קצר וחד של 3-4 מילים עם סימן קריאה",
 ];
 const BULLET_EMOJIS = ["✅", "🔥", "⚡", "⭐", "👌", "💪", "🎯", "✔️", "🚀"];
+// "החל מ-": המחיר הוא של הדגם הזול במבצע - ככה זה תמיד נכון גם כשבדף מוצג דגם אחר
 const PRICE_LINES = [
-  p => `💥 מחיר: ${p}₪ בלבד! 💥`,
-  p => `🔥 רק ${p}₪! 🔥`,
-  p => `💸 במחיר מטורף של ${p}₪ בלבד!`,
-  p => `🤑 שווה כל שקל - רק ${p}₪!`,
-  p => `⚡ מחיר דיל: ${p}₪ ⚡`,
-  p => `🎉 כל זה ב-${p}₪ בלבד!`,
+  p => `💥 מחיר: החל מ-${p}₪ בלבד! 💥`,
+  p => `🔥 החל מ-${p}₪ בלבד! 🔥`,
+  p => `💸 במחיר מטורף - החל מ-${p}₪!`,
+  p => `🤑 שווה כל שקל - החל מ-${p}₪!`,
+  p => `⚡ מחיר דיל: החל מ-${p}₪ ⚡`,
+  p => `🎉 כל זה החל מ-${p}₪ בלבד!`,
 ];
 let recentOpenings = [];
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 async function generateMarketingText(product, price) {
   const title = product.product_title;
-  const variantNote = priceRange(product).max > price * 1.05 ? "\n(המחיר לדגם הבסיסי, משתנה לפי צבע/דגם)" : "";
-  const priceLine = pick(PRICE_LINES)(price) + variantNote + "\n⏳ המחיר נכון לרגע הפרסום ועשוי להשתנות";
-  const fallback = `${pick(["🔥 דיל חדש!", "🚨 דיל חם!", "😍 תראו מה מצאנו!", "⚡ דיל בזק!"])}\n\n${title}\n\n${priceLine}`;
-  if (!openai) return fallback;
+  const priceLine = pick(PRICE_LINES)(price) + "\n⏳ המחיר במבצע נכון לרגע הפרסום, משתנה לפי דגם/צבע ועשוי להשתנות";
+  // בלי AI אין טקסט טוב ואין סינון צניעות - לא מפרסמים בכלל (במקום לשלוח רק את שם המוצר)
+  if (!openai) { lastErrorTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" }); lastErrorMessage = "אין מפתח OpenAI - לא נשלחים דילים"; return "AI_ERROR"; }
 
   // נתונים אמיתיים מהמוצר, כדי שההתלהבות תישען על עובדות ולא על המצאות
   const facts = [];
@@ -241,25 +256,40 @@ async function generateMarketingText(product, price) {
   try {
     const prompt = `
 משימה: כתוב פוסט שיווקי קצר, סוחף ומפוצץ באנרגיה בעברית לדיל מעליאקספרס, לקהל חרדי שומר תורה ומצוות.
-חוק סינון: אם המוצר אינו צנוע או שהוא סמל דתי נוצרי (צלב), החזר אך ורק את המילה: REJECT.
-אם המוצר תקין:
+חוק סינון: החזר אך ורק את המילה REJECT אם המוצר:
+  - אינו צנוע, או שהוא סמל דתי נוצרי (צלב) / של דת אחרת,
+  - קשור לדמויות מצוירות, אנימה, קיי-פופ, סלבריטאים, או חגים לא יהודיים,
+  - הוא שטות זולה / מחזיק מפתחות / קישוט חסר תועלת שמבוגר לא באמת צריך.
+אם המוצר תקין (שם המוצר נתון באנגלית - כתוב עליו בעברית):
 - ${pick(POST_STYLES)}.
 - אחרי הפתיחה: ${bullets} יתרונות בנקודות, כל נקודה מתחילה ב-${pick(BULLET_EMOJIS)} ומשפט קצר וקולע.
 - טון נלהב ומרגש עם קריאות התלהבות, כמו חבר שממליץ בהתרגשות - אבל בשפה נקייה ומכובדת בלבד (בלי מילים כמו סקסי).
 ${facts.length ? `- אפשר לשלב את הנתונים האמיתיים האלה: ${facts.join(", ")}. אל תמציא מספרים אחרים.` : "- אל תמציא מספרים, מכירות או דירוגים."}
 ${recentOpenings.length ? `- אל תפתח כמו הפוסטים הקודמים: ${recentOpenings.map(o => `"${o}"`).join(" | ")}` : ""}
+- אל תזכיר את הקהל בטקסט (בלי "למשפחה חרדית", "לבית שומר תורה" וכדומה) - פשוט תמליץ על המוצר.
 - בלי כותרות, בלי מחיר, בלי קישור ובלי שם המוצר בסוף (הם יתווספו אוטומטית).
 שם המוצר: ${title}`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 1.0
-    });
+    // ניסיון חוזר אחד אם OpenAI נכשל רגעית (עומס / חיבור)
+    let completion;
+    try {
+      completion = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 1.0 });
+    } catch (firstErr) {
+      await new Promise(r => setTimeout(r, 3000));
+      completion = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 1.0 });
+    }
     const body = completion.choices[0].message.content.trim();
     if (body.includes("REJECT")) return "REJECT";
     recentOpenings.push(body.split("\n")[0].slice(0, 60));
     if (recentOpenings.length > 5) recentOpenings.shift();
     return `${body}\n\n${priceLine}`;
-  } catch (err) { return fallback; }
+  } catch (err) {
+    // מציג את השגיאה בלוח הבקרה (למשל: נגמר הקרדיט ב-OpenAI) ולא שולח פוסט עלוב
+    lastErrorTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" });
+    lastErrorMessage = "OpenAI: " + err.message;
+    console.log("❌ שגיאה ב-OpenAI:", err.message);
+    return "AI_ERROR";
+  }
 }
 
 async function sendToChannel(text) {
@@ -304,6 +334,8 @@ async function fetchDeal() {
           const finalPrice = Math.floor(price * 100) / 100;
           const messageBodyText = await generateMarketingText(product, finalPrice);
           
+          // AI לא זמין - עוצרים את הסבב (בלי AI לא שולחים כלום)
+          if (messageBodyText === "AI_ERROR") { attempt = 99; break; }
           // סינון AI
           if (messageBodyText.includes("REJECT")) { sentProducts.add(product.product_id); continue; }
 
