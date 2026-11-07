@@ -43,6 +43,7 @@ const MAX_VARIANT_SPREAD = 1.6; // דגם יקר פי 1.6+ מהזול = כנרא
 const MIN_PRICE = 20;         // מתחת לזה זה בעיקר "שטויות" זולות
 const MAX_PRICE = 350;
 const PAGES_PER_SOURCE = 3;   // כמה עמודים לסרוק מכל מקור (העמודים הראשונים = הכי נמכרים)
+const MAX_PAGES = 12;         // כשהעמודים הראשונים כבר "נוצלו" (הכל נשלח) - ממשיכים לחפש עמוק יותר
 
 // ==========================================
 // ✨ משתני מערכת, סטטוס ומשתמשים ✨
@@ -185,11 +186,11 @@ function isRelevant(title, keyword) {
   return title.includes(head);
 }
 
-async function findCandidates(keyword) {
+async function findCandidates(keyword, fromPage = 1, toPage = PAGES_PER_SOURCE) {
   const seen = new Set();
   const candidates = [];
   for (const method of ["aliexpress.affiliate.hotproduct.query", "aliexpress.affiliate.product.query"]) {
-    for (let page = 1; page <= PAGES_PER_SOURCE; page++) {
+    for (let page = fromPage; page <= toPage; page++) {
       const products = await queryProducts(method, keyword, page);
       if (!products.length) break;
       for (const product of products) {
@@ -343,7 +344,7 @@ async function fetchDeal() {
   isFetching = true; botStatus = "🔍 מתחיל סריקה עמוקה בעליאקספרס...";
   try {
     postCounter++;
-    let foundDeal = false;
+    let foundDeal = false, aiFailed = false;
 
     // בלי שער דולר עדכני אי אפשר לחשב מחיר נכון - לא שולחים
     if (!(await refreshUsdIls())) {
@@ -354,9 +355,10 @@ async function fetchDeal() {
 
     // תמיד מתחילים מהעמודים הראשונים (הכי נמכרים) ומדלגים על מה שכבר נשלח.
     // אם למילת חיפוש אין כרגע מוצר חם מספיק - עוברים למילה אחרת (עד 3 ניסיונות)
-    for (let attempt = 0; attempt < 3 && !foundDeal; attempt++) {
+    for (let attempt = 0; attempt < 5 && !foundDeal; attempt++) {
       const currentKeyword = getNextKeyword();
-      const candidates = await findCandidates(currentKeyword);
+      let candidates = await findCandidates(currentKeyword);
+      if (!candidates.length) candidates = await findCandidates(currentKeyword, PAGES_PER_SOURCE + 1, MAX_PAGES);
 
       for (const product of candidates.slice(0, 15)) {
         const price = extractLowestPrice(product);
@@ -370,7 +372,7 @@ async function fetchDeal() {
           const messageBodyText = await generateMarketingText(product, finalPrice);
           
           // AI לא זמין - עוצרים את הסבב (בלי AI לא שולחים כלום)
-          if (messageBodyText === "AI_ERROR") { attempt = 99; break; }
+          if (messageBodyText === "AI_ERROR") { aiFailed = true; attempt = 99; break; }
           // סינון AI
           if (messageBodyText.includes("REJECT")) { sentProducts.add(product.product_id); continue; }
 
@@ -389,6 +391,11 @@ async function fetchDeal() {
           break;
         }
       }
+    }
+    // שלא יהיה שוב שקט בלי הסבר: מציגים בלוח הבקרה שלא נמצא מוצר חדש
+    if (!foundDeal && !aiFailed) {
+      lastErrorTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" });
+      lastErrorMessage = "לא נמצא מוצר חדש שעומד בכל התנאים בסבב הזה";
     }
   } catch (error) {
     lastErrorTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" }); lastErrorMessage = error.message;
