@@ -26,6 +26,10 @@ const GREEN_API_URL = "https://7107.api.greenapi.com";
 const GREEN_API_ID = "7107571319"; 
 const GREEN_API_TOKEN = "7869922969b9444cba16f8edb61b6c7a1e63843e7c414b228c"; 
 
+// 🎟️ הגרלה שבועית (דפים ציבוריים: /join, /me, /r/<קוד>)
+const raffle = require("./raffle");
+raffle.init({ GREEN_API_URL, GREEN_API_ID, GREEN_API_TOKEN, siteUrl: "https://dont-miss-deals.com/" });
+
 const KEYWORDS_FILE = "keywords.json";
 const SENT_FILE = "./bot_data/sent_products.json";
 const USERS_FILE = "./bot_data/users.json";
@@ -434,6 +438,12 @@ http.createServer((req, res) => {
     const currentUsername = sessions[sessionToken];
     const currentUser = users.find(u => u.username === currentUsername);
 
+    // דפי ההגרלה פתוחים לכולם (בלי התחברות ללוח הבקרה)
+    if (raffle.isPublicRoute(parsedUrl.pathname)) {
+        raffle.handle(req, res, parsedUrl, cookies).catch(err => { console.log("❌ שגיאה בהגרלה:", err.message); try { res.writeHead(500); res.end(); } catch (e) {} });
+        return;
+    }
+
     // ניתוק משתמש
     if (parsedUrl.pathname === '/logout') {
         delete sessions[sessionToken];
@@ -478,6 +488,12 @@ http.createServer((req, res) => {
                 await sendToGreenApi(null, formData.custom_msg);
                 lastSentDealTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" });
                 dealHistory.unshift({ time: lastSentDealTime.split(',')[1], title: "📣 הודעה יזומה: " + formData.custom_msg.substring(0,20) });
+            }
+
+            // הגרלה שבועית - הגרלת זוכה (מנהל בלבד)
+            if (parsedUrl.pathname === '/raffle/draw' && isAdmin) {
+                const win = await raffle.draw(formData.notify === "1");
+                if (win) dealHistory.unshift({ time: new Date().toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem" }), title: "🏆 זוכה בהגרלה: " + win.name });
             }
 
             // 4. ניהול משתמשים - הוספה (מנהל בלבד)
@@ -575,6 +591,8 @@ http.createServer((req, res) => {
                 🛍️ סה"כ דילים בכספת: <strong>${sentProducts.size}</strong><br>
                 ⚠️ שגיאה אחרונה: ${lastErrorTime} (${lastErrorMessage})
             </div>
+
+            ${isAdmin ? raffle.adminHtml() : ''}
 
             ${isAdmin ? `
             <div class="box">
