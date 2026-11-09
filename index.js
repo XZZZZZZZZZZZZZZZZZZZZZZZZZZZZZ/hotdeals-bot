@@ -28,7 +28,7 @@ const GREEN_API_TOKEN = "7869922969b9444cba16f8edb61b6c7a1e63843e7c414b228c";
 
 // 🎟️ הגרלה שבועית (דפים ציבוריים: /join, /me, /r/<קוד>)
 const raffle = require("./raffle");
-raffle.init({ GREEN_API_URL, GREEN_API_ID, GREEN_API_TOKEN, siteUrl: "https://dont-miss-deals.com/" });
+raffle.init({ siteUrl: "https://dont-miss-deals.com/" });   // אימות במייל: צריך משתני סביבה SMTP_* (ראה raffle.js)
 
 const KEYWORDS_FILE = "keywords.json";
 const SENT_FILE = "./bot_data/sent_products.json";
