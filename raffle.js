@@ -1,23 +1,43 @@
-// 🎟️ הגרלה שבועית: הרשמה עם אימות טלפון בוואטסאפ, קישור אישי, וכרטיס לכל מבקר חדש שנכנס דרכו
+// 🎟️ הגרלה שבועית: הרשמה עם אימות במייל, קישור אישי, וכרטיס לכל מבקר חדש שנכנס דרכו
+// שליחת מיילים: משתני סביבה SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM (למשל ג'ימייל עם "סיסמת אפליקציה")
 const fs = require("fs");
 const crypto = require("crypto");
-const axios = require("axios");
 const querystring = require("querystring");
 
 const DATA_FILE = "./bot_data/raffle.json";
 const MAX_TICKETS_PER_DAY = 20;          // תקרת כרטיסים ליום למשתתף (נגד רמאויות)
 const CODE_TTL = 10 * 60 * 1000;         // קוד אימות תקף ל-10 דקות
 const PRIZE = "20 ש\"ח";
+const SITE_NAME = "דילים שפשוט חבל לפספס";
+// מיילים זמניים - חסומים כדי שלא יפתחו חשבונות בלי סוף
+const DISPOSABLE = ["mailinator.com", "yopmail.com", "guerrillamail.com", "10minutemail.com", "tempmail.com", "temp-mail.org", "trashmail.com", "sharklasers.com", "getnada.com", "dispostable.com", "maildrop.cc", "mohmal.com", "emailondeck.com", "fakeinbox.com"];
 
 let cfg = {};
+let transport = null;
 let db = { salt: crypto.randomBytes(16).toString("hex"), participants: {}, round: { started: Date.now(), tickets: {}, seen: {}, daily: {} }, winners: [] };
 if (fs.existsSync(DATA_FILE)) { try { db = Object.assign(db, JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"))); } catch (e) {} }
 function save() { fs.writeFileSync(DATA_FILE, JSON.stringify(db)); }
 
-const pending = {};                       // phone -> { code, expires, tries, name }
+const pending = {};                       // email -> { code, expires, tries }
 const hits = {};                          // rate-limit buckets
 
-function init(c) { cfg = c; }
+function init(c) { cfg = c || {}; if (cfg.transport) transport = cfg.transport; }
+
+function mailer() {
+  if (transport) return transport;
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
+  const nodemailer = require("nodemailer");
+  transport = nodemailer.createTransport({
+    host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 465), secure: Number(process.env.SMTP_PORT || 465) === 465,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  });
+  return transport;
+}
+async function sendMail(to, subject, text) {
+  const m = mailer();
+  if (!m) throw new Error("SMTP לא מוגדר (חסרים משתני סביבה SMTP_HOST / SMTP_USER / SMTP_PASS)");
+  await m.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER || "raffle@example.com", to, subject, text });
+}
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[ch]));
@@ -26,12 +46,18 @@ function hash(s) { return crypto.createHash("sha256").update(db.salt + s).digest
 function clientIp(req) {
   return (String(req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket.remoteAddress || "";
 }
-function normalizePhone(p) {                // ישראלי בלבד: 05X... או +9725X...
-  let d = String(p || "").replace(/\D/g, "");
-  if (d.startsWith("0")) d = "972" + d.slice(1);
-  return /^9725\d{8}$/.test(d) ? d : null;
+// כתובת מייל "קנונית": ג'ימייל מתעלם מנקודות ומ-+תוספות, אז a.b+1@gmail.com = ab@gmail.com = חשבון אחד
+function normalizeEmail(e) {
+  const s = String(e || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(s) || s.length > 100) return null;
+  let [user, domain] = s.split("@");
+  if (DISPOSABLE.includes(domain)) return null;
+  if (domain === "googlemail.com") domain = "gmail.com";
+  if (domain === "gmail.com") user = user.replace(/\./g, "");
+  user = user.split("+")[0];
+  return user ? user + "@" + domain : null;
 }
-function maskPhone(d) { return "0" + d.slice(3, 5) + "-XXX-" + d.slice(-4); }
+function maskEmail(e) { const [u, d] = e.split("@"); return u.slice(0, 2) + "***@" + d; }
 function rateOk(key, limit, windowMs) {
   const now = Date.now();
   hits[key] = (hits[key] || []).filter(x => now - x < windowMs);
@@ -44,17 +70,12 @@ function newId() {
   do { id = ""; for (let i = 0; i < 6; i++) id += abc[crypto.randomInt(abc.length)]; } while (db.participants[id]);
   return id;
 }
-function findByPhone(phone) { return Object.keys(db.participants).find(id => db.participants[id].phone === phone); }
+function findByEmail(email) { return Object.keys(db.participants).find(id => db.participants[id].email === email); }
 function baseUrl(req) {
   const proto = String(req.headers["x-forwarded-proto"] || "https").split(",")[0];
   return proto + "://" + req.headers.host;
 }
 function todayKey() { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" }); }
-
-async function sendWhatsApp(phone, text) {
-  const endpoint = cfg.GREEN_API_URL + "/waInstance" + cfg.GREEN_API_ID + "/sendMessage/" + cfg.GREEN_API_TOKEN;
-  await axios.post(endpoint, { chatId: phone + "@c.us", message: text }, { timeout: 15000 });
-}
 
 function page(title, body) {
   return "<!DOCTYPE html><html dir=\"rtl\" lang=\"he\"><head><meta charset=\"utf-8\"><title>" + esc(title) + "</title>" +
@@ -67,7 +88,7 @@ function page(title, body) {
     ".btn2{background:#6441a5}.err{background:#ffe1e1;color:#b00;padding:10px;border-radius:8px;margin:8px 0}.big{font-size:44px;font-weight:bold;color:#6441a5}" +
     ".link{direction:ltr;background:#f2f2f7;padding:10px;border-radius:8px;word-break:break-all;font-size:15px}.small{font-size:13px;color:#666}" +
     "label{display:flex;gap:8px;align-items:flex-start;text-align:right;font-size:14px}label input{width:auto;margin-top:3px}a{color:#6441a5}</style></head>" +
-    "<body><h1>🎟️ הגרלה שבועית</h1><p>" + PRIZE + " בכל שבוע · דילים שפשוט חבל לפספס</p><div class=\"box\">" + body + "</div></body></html>";
+    "<body><h1>🎟️ הגרלה שבועית</h1><p>" + PRIZE + " בכל שבוע · " + SITE_NAME + "</p><div class=\"box\">" + body + "</div></body></html>";
 }
 
 function send(res, code, html, headers) {
@@ -75,24 +96,24 @@ function send(res, code, html, headers) {
   res.end(html);
 }
 
-function joinForm(err, name, phone) {
+function joinForm(err, name, email) {
   return page("הרשמה להגרלה",
     "<h2>הרשמה להגרלה</h2><p>נרשמים, מקבלים קישור אישי, ומשתפים אותו.<br><b>כל אדם חדש שנכנס דרך הקישור שלכם = כרטיס נוסף להגרלה!</b></p>" +
     (err ? "<div class=\"err\">" + esc(err) + "</div>" : "") +
     "<form method=\"POST\" action=\"/join/send-code\">" +
     "<input name=\"name\" placeholder=\"שם מלא\" required maxlength=\"40\" value=\"" + esc(name) + "\">" +
-    "<input name=\"phone\" placeholder=\"מספר טלפון (וואטסאפ)\" required inputmode=\"tel\" value=\"" + esc(phone) + "\">" +
-    "<label><input type=\"checkbox\" name=\"consent\" value=\"1\" required> אני מאשר/ת שמספר הטלפון ישמש רק לאימות ולעדכון במקרה של זכייה, ומסכים/ה <a href=\"/raffle/rules\">לתקנון</a></label>" +
-    "<button type=\"submit\">שלחו לי קוד בוואטסאפ</button></form>" +
-    "<p class=\"small\">כבר רשומים? הכניסו את אותו המספר ותקבלו קוד כניסה.</p>");
+    "<input name=\"email\" type=\"email\" placeholder=\"כתובת מייל\" required dir=\"ltr\" value=\"" + esc(email) + "\">" +
+    "<label><input type=\"checkbox\" name=\"consent\" value=\"1\" required> אני מאשר/ת שכתובת המייל תשמש רק לאימות ולעדכון במקרה של זכייה, ומסכים/ה <a href=\"/raffle/rules\">לתקנון</a></label>" +
+    "<button type=\"submit\">שלחו לי קוד למייל</button></form>" +
+    "<p class=\"small\">כבר רשומים? הכניסו את אותו המייל ותקבלו קוד כניסה.</p>");
 }
 
-function codeForm(err, name, phone) {
+function codeForm(err, name, email) {
   return page("אימות",
-    "<h2>שלחנו לכם קוד בוואטסאפ 📲</h2><p>למספר " + esc(maskPhone(phone)) + "</p>" +
+    "<h2>שלחנו לכם קוד למייל 📧</h2><p dir=\"ltr\">" + esc(maskEmail(email)) + "</p><p class=\"small\">לא רואים? בדקו גם בתיקיית הספאם / קידומי מכירות.</p>" +
     (err ? "<div class=\"err\">" + esc(err) + "</div>" : "") +
     "<form method=\"POST\" action=\"/join/verify\">" +
-    "<input type=\"hidden\" name=\"phone\" value=\"" + esc(phone) + "\"><input type=\"hidden\" name=\"name\" value=\"" + esc(name) + "\">" +
+    "<input type=\"hidden\" name=\"email\" value=\"" + esc(email) + "\"><input type=\"hidden\" name=\"name\" value=\"" + esc(name) + "\">" +
     "<input name=\"code\" placeholder=\"קוד בן 6 ספרות\" required inputmode=\"numeric\" maxlength=\"6\" autocomplete=\"one-time-code\">" +
     "<button type=\"submit\">אישור</button></form><p class=\"small\"><a href=\"/join\">לא קיבלתם? חזרה</a></p>");
 }
@@ -115,11 +136,11 @@ function rulesPage() {
   return page("תקנון",
     "<h2>תקנון ההגרלה</h2><div style=\"text-align:right\" class=\"small\">" +
     "<p>1. ההשתתפות חינם ואינה מותנית ברכישה.</p>" +
-    "<p>2. כל משתתף נרשם פעם אחת עם מספר טלפון ישראלי מאומת. חשבון אחד לכל מספר.</p>" +
+    "<p>2. כל משתתף נרשם פעם אחת עם כתובת מייל מאומתת. חשבון אחד לכל אדם; פתיחת כמה חשבונות תגרום לפסילה.</p>" +
     "<p>3. כל אדם חדש שנכנס דרך הקישור האישי של משתתף מזכה אותו בכרטיס אחד, עד " + MAX_TICKETS_PER_DAY + " כרטיסים ביום. כניסות חוזרות, כניסות של המשתתף עצמו ושימוש בכלים אוטומטיים לא נספרים, ומשתתף שינסה לרמות ייפסל.</p>" +
     "<p>4. אחת לשבוע תיערך הגרלה ממוחשבת בין כל הכרטיסים של אותו שבוע. כל כרטיס = סיכוי אחד. לאחר ההגרלה הכרטיסים מתאפסים.</p>" +
-    "<p>5. הפרס: " + PRIZE + ". הזוכה יקבל הודעה בוואטסאפ למספר שנרשם.</p>" +
-    "<p>6. מספר הטלפון ישמש רק לאימות ולעדכון על זכייה, ולא יועבר לאף גורם.</p>" +
+    "<p>5. הפרס: " + PRIZE + ". הזוכה יקבל הודעה למייל שנרשם.</p>" +
+    "<p>6. כתובת המייל תשמש רק לאימות ולעדכון על זכייה, ולא תועבר לאף גורם.</p>" +
     "<p>7. המארגנים רשאים לשנות או להפסיק את ההגרלה בכל עת.</p></div>" +
     "<a class=\"btn btn2\" href=\"/join\">להרשמה</a>");
 }
@@ -189,38 +210,39 @@ async function handle(req, res, parsedUrl, cookies) {
   if (path === "/join/send-code" && req.method === "POST") {
     const f = await readBody(req);
     const name = String(f.name || "").trim().slice(0, 40);
-    const phone = normalizePhone(f.phone);
-    if (!name) return send(res, 200, joinForm("נא למלא שם", name, f.phone));
-    if (!phone) return send(res, 200, joinForm("מספר טלפון לא תקין (צריך מספר נייד ישראלי)", name, f.phone));
-    if (f.consent !== "1") return send(res, 200, joinForm("צריך לאשר את התנאים", name, f.phone));
-    if (!rateOk("ip:" + ip, 10, 3600000)) return send(res, 200, joinForm("יותר מדי ניסיונות. נסו שוב בעוד שעה", name, f.phone));
-    if (!rateOk("ph1:" + phone, 1, 60000)) return send(res, 200, codeForm("כבר שלחנו קוד לפני רגע. בדקו את הוואטסאפ", name, phone));
-    if (!rateOk("ph:" + phone, 5, 86400000)) return send(res, 200, joinForm("יותר מדי קודים למספר הזה היום", name, f.phone));
+    const email = normalizeEmail(f.email);
+    if (!name) return send(res, 200, joinForm("נא למלא שם", name, f.email));
+    if (!email) return send(res, 200, joinForm("כתובת מייל לא תקינה (מיילים זמניים לא מתקבלים)", name, f.email));
+    if (f.consent !== "1") return send(res, 200, joinForm("צריך לאשר את התנאים", name, f.email));
+    if (!rateOk("ip:" + ip, 10, 3600000)) return send(res, 200, joinForm("יותר מדי ניסיונות. נסו שוב בעוד שעה", name, f.email));
+    if (!rateOk("em1:" + email, 1, 60000)) return send(res, 200, codeForm("כבר שלחנו קוד לפני רגע. בדקו את המייל", name, email));
+    if (!rateOk("em:" + email, 5, 86400000)) return send(res, 200, joinForm("יותר מדי קודים למייל הזה היום", name, f.email));
     const code = String(crypto.randomInt(100000, 1000000));
-    pending[phone] = { code, expires: Date.now() + CODE_TTL, tries: 0 };
+    pending[email] = { code, expires: Date.now() + CODE_TTL, tries: 0 };
     try {
-      await sendWhatsApp(phone, "🎟️ הקוד שלך להגרלה של דילים שפשוט חבל לפספס: " + code + "\nהקוד בתוקף ל-10 דקות. אם לא ביקשת, אפשר להתעלם.");
+      await sendMail(String(f.email).trim(), "הקוד שלך להגרלה: " + code,
+        "שלום " + name + ",\n\nהקוד שלך להרשמה להגרלה השבועית של " + SITE_NAME + " הוא: " + code + "\n\nהקוד בתוקף ל-10 דקות. אם לא ביקשת, אפשר להתעלם מהמייל.");
     } catch (e) {
-      console.log("❌ שליחת קוד נכשלה:", e.message);
-      return send(res, 200, joinForm("לא הצלחנו לשלוח קוד לוואטסאפ. ודאו שהמספר נכון ונסו שוב", name, f.phone));
+      console.log("❌ שליחת קוד במייל נכשלה:", e.message);
+      return send(res, 200, joinForm("לא הצלחנו לשלוח מייל כרגע. נסו שוב מאוחר יותר", name, f.email));
     }
-    return send(res, 200, codeForm(null, name, phone));
+    return send(res, 200, codeForm(null, name, email));
   }
 
   if (path === "/join/verify" && req.method === "POST") {
     const f = await readBody(req);
-    const phone = normalizePhone(f.phone);
+    const email = normalizeEmail(f.email);
     const name = String(f.name || "").trim().slice(0, 40);
-    const pend = phone && pending[phone];
-    if (!pend || Date.now() > pend.expires) return send(res, 200, joinForm("הקוד פג תוקף. בקשו קוד חדש", name, f.phone));
+    const pend = email && pending[email];
+    if (!pend || Date.now() > pend.expires) return send(res, 200, joinForm("הקוד פג תוקף. בקשו קוד חדש", name, f.email));
     pend.tries++;
-    if (pend.tries > 5) { delete pending[phone]; return send(res, 200, joinForm("יותר מדי ניסיונות. בקשו קוד חדש", name, f.phone)); }
-    if (String(f.code || "").trim() !== pend.code) return send(res, 200, codeForm("קוד שגוי, נסו שוב", name, phone));
-    delete pending[phone];
-    let id = findByPhone(phone);                      // מספר קיים = אותו חשבון (כניסה ממכשיר חדש)
+    if (pend.tries > 5) { delete pending[email]; return send(res, 200, joinForm("יותר מדי ניסיונות. בקשו קוד חדש", name, f.email)); }
+    if (String(f.code || "").trim() !== pend.code) return send(res, 200, codeForm("קוד שגוי, נסו שוב", name, email));
+    delete pending[email];
+    let id = findByEmail(email);                      // מייל קיים = אותו חשבון (כניסה ממכשיר חדש)
     if (!id) {
       id = newId();
-      db.participants[id] = { name: name || "משתתף", phone, created: Date.now(), ips: [hash(ip)] };
+      db.participants[id] = { name: name || "משתתף", email, contact: String(f.email || "").trim().slice(0, 100), created: Date.now(), ips: [hash(ip)] };
       save();
     }
     res.writeHead(302, { "Location": "/me", "Set-Cookie": "raffle_id=" + id + "; Max-Age=31536000; Path=/; HttpOnly; SameSite=Lax" });
@@ -236,15 +258,16 @@ function adminHtml() {
   const total = ids.reduce((s, id) => s + db.round.tickets[id], 0);
   const rows = ids.slice(0, 15).map(id => {
     const p = db.participants[id] || {};
-    return "<div class=\"user-row\"><span>🎟️ " + esc(p.name) + " (" + esc(p.phone ? maskPhone(p.phone) : "") + ")</span><b>" + db.round.tickets[id] + "</b></div>";
+    return "<div class=\"user-row\"><span>🎟️ " + esc(p.name) + " (" + esc(p.email ? maskEmail(p.email) : "") + ")</span><b>" + db.round.tickets[id] + "</b></div>";
   }).join("");
   const last = db.winners.slice(-3).reverse().map(w =>
-    "<div>🏆 " + esc(w.date) + ": " + esc(w.name) + " · 0" + esc(w.phone.slice(3)) + " (" + w.tickets + "/" + w.total + " כרטיסים)</div>").join("");
+    "<div>🏆 " + esc(w.date) + ": " + esc(w.name) + " · " + esc(w.email || "") + " (" + w.tickets + "/" + w.total + " כרטיסים)</div>").join("");
   return "<div class=\"box\"><strong style=\"color:#6441a5;\">🎟️ הגרלה שבועית</strong><hr>" +
     "נרשמים: <b>" + Object.keys(db.participants).length + "</b> · כרטיסים השבוע: <b>" + total + "</b><br>" +
-    "דף הרשמה לשיתוף: <b>/join</b><hr>" + (rows || "אין עדיין כרטיסים השבוע") + "<hr>" +
+    "דף הרשמה לשיתוף: <b>/join</b>" + (mailer() ? "" : "<br><span style=\"color:#b00\">⚠️ שליחת מיילים לא מוגדרת (SMTP) - אי אפשר להירשם</span>") + "<hr>" +
+    (rows || "אין עדיין כרטיסים השבוע") + "<hr>" +
     "<form action=\"/raffle/draw\" method=\"POST\" onsubmit=\"return confirm('להגריל זוכה ולאפס את הכרטיסים של השבוע?')\">" +
-    "<label style=\"display:flex;gap:6px;justify-content:flex-start;\"><input type=\"checkbox\" name=\"notify\" value=\"1\" checked style=\"width:auto\"> לשלוח לזוכה הודעה בוואטסאפ</label>" +
+    "<label style=\"display:flex;gap:6px;justify-content:flex-start;\"><input type=\"checkbox\" name=\"notify\" value=\"1\" checked style=\"width:auto\"> לשלוח לזוכה מייל</label>" +
     "<button type=\"submit\" class=\"btn\" style=\"background:#6441a5;\" " + (total ? "" : "disabled") + ">🎲 הגרל זוכה</button></form>" +
     (last ? "<hr><strong>זוכים אחרונים:</strong>" + last : "") + "</div>";
 }
@@ -256,13 +279,13 @@ async function draw(notify) {
   let pick = crypto.randomInt(total), winnerId = ids[0];
   for (const id of ids) { pick -= db.round.tickets[id]; if (pick < 0) { winnerId = id; break; } }
   const p = db.participants[winnerId];
-  const win = { date: new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" }), id: winnerId, name: p.name, phone: p.phone, tickets: db.round.tickets[winnerId], total };
+  const win = { date: new Date().toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" }), id: winnerId, name: p.name, email: p.contact || p.email, tickets: db.round.tickets[winnerId], total };
   db.winners.push(win);
   db.round = { started: Date.now(), tickets: {}, seen: {}, daily: {} };
   save();
   if (notify) {
-    try { await sendWhatsApp(p.phone, "🎉 מזל טוב " + p.name + "! זכית בהגרלה השבועית של דילים שפשוט חבל לפספס (" + PRIZE + "). ניצור איתך קשר להעברת הפרס."); }
-    catch (e) { console.log("❌ הודעה לזוכה נכשלה:", e.message); }
+    try { await sendMail(p.contact || p.email, "🎉 זכית בהגרלה השבועית!", "מזל טוב " + p.name + "!\n\nזכית בהגרלה השבועית של " + SITE_NAME + " (" + PRIZE + ").\nנחזור אליך במייל הזה כדי להעביר את הפרס."); }
+    catch (e) { console.log("❌ מייל לזוכה נכשל:", e.message); }
   }
   return win;
 }
