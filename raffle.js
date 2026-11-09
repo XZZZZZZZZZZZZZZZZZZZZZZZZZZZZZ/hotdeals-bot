@@ -1,8 +1,11 @@
 // 🎟️ הגרלה שבועית: הרשמה עם אימות במייל, קישור אישי, וכרטיס לכל מבקר חדש שנכנס דרכו
-// שליחת מיילים: משתני סביבה SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM (למשל ג'ימייל עם "סיסמת אפליקציה")
+// שליחת מיילים - אחת משתי אפשרויות (משתני סביבה):
+//   1. "שלח מסר": SENDMSG_SITE_ID, SENDMSG_PASSWORD (סיסמת API מהתמיכה שלהם), SENDMSG_SENDER_EMAIL, SENDMSG_SENDER_NAME
+//   2. SMTP: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM
 const fs = require("fs");
 const crypto = require("crypto");
 const querystring = require("querystring");
+const axios = require("axios");
 
 const DATA_FILE = "./bot_data/raffle.json";
 const MAX_TICKETS_PER_DAY = 20;          // תקרת כרטיסים ליום למשתתף (נגד רמאויות)
@@ -33,9 +36,41 @@ function mailer() {
   });
   return transport;
 }
-async function sendMail(to, subject, text) {
+// ---- שליחה דרך "שלח מסר" (SendMsg API 4.0) ----
+const SENDMSG_API = process.env.SENDMSG_API_URL || "https://gconvertrest.sendmsg.co.il/api/Sendmsg/";
+let smToken = null, smTokenAt = 0;
+function sendmsgConfigured() { return !!(process.env.SENDMSG_SITE_ID && process.env.SENDMSG_PASSWORD); }
+async function sendmsgToken(force) {
+  if (!force && smToken && Date.now() - smTokenAt < 11 * 3600 * 1000) return smToken;   // הטוקן תקף 12 שעות
+  const r = await axios.post(SENDMSG_API + "token", { siteID: Number(process.env.SENDMSG_SITE_ID), password: process.env.SENDMSG_PASSWORD }, { timeout: 15000 });
+  const tok = r.data && (r.data.Token || r.data.token);
+  if (!tok) throw new Error("SendMsg: לא התקבל טוקן (" + JSON.stringify(r.data).slice(0, 200) + ")");
+  smToken = tok; smTokenAt = Date.now(); return tok;
+}
+async function sendViaSendmsg(to, subject, text, info) {
+  const html = "<div dir=\"rtl\" style=\"font-family:Arial,sans-serif;font-size:16px;line-height:1.6\">" + esc(text).replace(/\n/g, "<br>") + "</div>";
+  const body = {
+    users: [{ EmailAddress: to, Cellphone: info && info.phone ? "0" + info.phone.slice(3) : "", FirstName: (info && info.name) || "" }],
+    Message: { MessageContent: html, MessageSubject: subject, SenderEmailAddress: process.env.SENDMSG_SENDER_EMAIL || undefined,
+      SenderName: process.env.SENDMSG_SENDER_NAME || SITE_NAME, MessageDirection: 1, MessageInnerName: "הגרלה - " + subject.slice(0, 40),
+      AddFacebook: false, AddForward: false, AddShowMessage: false }
+  };
+  const post = async token => axios.post(SENDMSG_API + "AddUsersAndSend?included_self_removed=true", body,
+    { headers: { Authorization: token, "Content-Type": "application/json; charset=utf-8" }, timeout: 20000, validateStatus: () => true });
+  let r = await post(await sendmsgToken());
+  if (r.status === 401) r = await post(await sendmsgToken(true));      // טוקן פג - מחדשים פעם אחת
+  const d = r.data || {};
+  const code = Number(d.result && d.result.ResultID);
+  if (r.status >= 300 || d.success === false || (code && code !== 200 && code !== 10000 && (code < 200 || code >= 300))) {
+    throw new Error("SendMsg: " + r.status + " " + JSON.stringify(d.result || d).slice(0, 200));
+  }
+}
+
+function emailConfigured() { return sendmsgConfigured() || !!mailer(); }
+async function sendMail(to, subject, text, info) {
+  if (sendmsgConfigured()) return sendViaSendmsg(to, subject, text, info);
   const m = mailer();
-  if (!m) throw new Error("SMTP לא מוגדר (חסרים משתני סביבה SMTP_HOST / SMTP_USER / SMTP_PASS)");
+  if (!m) throw new Error("שליחת מיילים לא מוגדרת (חסרים פרטי SendMsg או SMTP)");
   await m.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER || "raffle@example.com", to, subject, text });
 }
 
@@ -235,7 +270,7 @@ async function handle(req, res, parsedUrl, cookies) {
     pending[email] = { code, expires: Date.now() + CODE_TTL, tries: 0 };
     try {
       await sendMail(String(f.email).trim(), "הקוד שלך להגרלה: " + code,
-        "שלום " + name + ",\n\nהקוד שלך להרשמה להגרלה השבועית של " + SITE_NAME + " הוא: " + code + "\n\nהקוד בתוקף ל-10 דקות. אם לא ביקשת, אפשר להתעלם מהמייל.");
+        "שלום " + name + ",\n\nהקוד שלך להרשמה להגרלה השבועית של " + SITE_NAME + " הוא: " + code + "\n\nהקוד בתוקף ל-10 דקות. אם לא ביקשת, אפשר להתעלם מהמייל.", { name, phone });
     } catch (e) {
       console.log("❌ שליחת קוד במייל נכשלה:", e.message);
       return back("לא הצלחנו לשלוח מייל כרגע. נסו שוב מאוחר יותר");
@@ -283,7 +318,7 @@ function adminHtml() {
     "<div>🏆 " + esc(w.date) + ": " + esc(w.name) + " · " + esc(w.phone ? prettyPhone(w.phone) : "") + " · " + esc(w.email || "") + " (" + w.tickets + "/" + w.total + " כרטיסים)</div>").join("");
   return "<div class=\"box\"><strong style=\"color:#6441a5;\">🎟️ הגרלה שבועית</strong><hr>" +
     "נרשמים: <b>" + Object.keys(db.participants).length + "</b> · כרטיסים השבוע: <b>" + total + "</b><br>" +
-    "דף הרשמה לשיתוף: <b>/join</b>" + (mailer() ? "" : "<br><span style=\"color:#b00\">⚠️ שליחת מיילים לא מוגדרת (SMTP) - אי אפשר להירשם</span>") + "<hr>" +
+    "דף הרשמה לשיתוף: <b>/join</b>" + (emailConfigured() ? "" : "<br><span style=\"color:#b00\">⚠️ שליחת מיילים לא מוגדרת (שלח מסר / SMTP) - אי אפשר להירשם</span>") + "<hr>" +
     (rows || "אין עדיין כרטיסים השבוע") + "<hr>" +
     "<form action=\"/raffle/draw\" method=\"POST\" onsubmit=\"return confirm('להגריל זוכה ולאפס את הכרטיסים של השבוע?')\">" +
     "<label style=\"display:flex;gap:6px;justify-content:flex-start;\"><input type=\"checkbox\" name=\"notify\" value=\"1\" checked style=\"width:auto\"> לשלוח לזוכה מייל</label>" +
@@ -303,7 +338,7 @@ async function draw(notify) {
   db.round = { started: Date.now(), tickets: {}, seen: {}, daily: {} };
   save();
   if (notify) {
-    try { await sendMail(p.contact || p.email, "🎉 זכית בהגרלה השבועית!", "מזל טוב " + p.name + "!\n\nזכית בהגרלה השבועית של " + SITE_NAME + " (" + PRIZE + ").\nנחזור אליך במייל הזה כדי להעביר את הפרס."); }
+    try { await sendMail(p.contact || p.email, "🎉 זכית בהגרלה השבועית!", "מזל טוב " + p.name + "!\n\nזכית בהגרלה השבועית של " + SITE_NAME + " (" + PRIZE + ").\nנחזור אליך במייל הזה כדי להעביר את הפרס.", { name: p.name, phone: p.phone }); }
     catch (e) { console.log("❌ מייל לזוכה נכשל:", e.message); }
   }
   return win;
