@@ -301,7 +301,7 @@ ${facts.length ? `- אפשר לשלב את הנתונים האמיתיים הא�
 ${recentOpenings.length ? `- אל תפתח כמו הפוסטים הקודמים: ${recentOpenings.map(o => `"${o}"`).join(" | ")}` : ""}
 - אל תזכיר את הקהל בטקסט (בלי "למשפחה חרדית", "לבית שומר תורה" וכדומה) - פשוט תמליץ על המוצר.
 - בלי כותרות, בלי מחיר, בלי קישור ובלי שם המוצר בסוף (הם יתווספו אוטומטית).
-שם המוצר: ${title}`;
+שם המוצר: ${title}`.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");   // חצי אימוג'י שבור = OpenAI דוחה את כל הבקשה
 
     // ניסיון חוזר אחד אם OpenAI נכשל רגעית (עומס / חיבור)
     let completion;
@@ -313,7 +313,7 @@ ${recentOpenings.length ? `- אל תפתח כמו הפוסטים הקודמים:
     }
     const body = completion.choices[0].message.content.trim();
     if (body.includes("REJECT")) return "REJECT";
-    recentOpenings.push(body.split("\n")[0].slice(0, 60));
+    recentOpenings.push(Array.from(body.split("\n")[0]).slice(0, 60).join(""));   // חיתוך לפי תווים שלמים, לא באמצע אימוג'י
     if (recentOpenings.length > 5) recentOpenings.shift();
     return `${body}\n\n${priceLine}`;
   } catch (err) {
