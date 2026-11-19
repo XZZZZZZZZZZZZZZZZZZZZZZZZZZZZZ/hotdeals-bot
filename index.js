@@ -89,12 +89,12 @@ function getNextKeyword() {
     const data = JSON.parse(fs.readFileSync(KEYWORDS_FILE, "utf-8"));
     const keywords = [...new Set(data.keywords || [])];
     if (keywords.length === 0) return "gadgets";
-    // לא חוזרים על אחת מ-5 מילות החיפוש האחרונות, כדי לגוון בין קטגוריות
+    // לא חוזרים על מילת חיפוש עד שעברו רוב המילים האחרות (גיוון מקסימלי בין קטגוריות)
     const fresh = keywords.filter(k => !recentKeywords.includes(k));
     const pool = fresh.length ? fresh : keywords;
     const selected = pool[Math.floor(Math.random() * pool.length)];
     recentKeywords.push(selected);
-    if (recentKeywords.length > Math.min(5, keywords.length - 1)) recentKeywords.shift();
+    while (recentKeywords.length > Math.max(1, Math.floor(keywords.length * 0.7))) recentKeywords.shift();
     return selected;
   } catch (err) { return "gadgets"; }
 }
@@ -292,13 +292,17 @@ async function generateMarketingText(product, price) {
 חוק סינון: החזר אך ורק את המילה REJECT אם המוצר:
   - אינו צנוע, או שהוא סמל דתי נוצרי (צלב) / של דת אחרת,
   - קשור לדמויות מצוירות, אנימה, קיי-פופ, סלבריטאים, או חגים לא יהודיים,
-  - הוא שטות זולה / מחזיק מפתחות / קישוט חסר תועלת שמבוגר לא באמת צריך.
+  - הוא שטות זולה / מחזיק מפתחות / קישוט חסר תועלת שמבוגר לא באמת צריך,
+  - השימוש העיקרי שלו הוא צפייה בסרטים / טלוויזיה / סדרות (מקרן, סטרימר, TV box).
 אם המוצר תקין (שם המוצר נתון באנגלית - כתוב עליו בעברית):
 - ${pick(POST_STYLES)}.
 - אחרי הפתיחה: ${bullets} יתרונות בנקודות, כל נקודה מתחילה ב-${pick(BULLET_EMOJIS)} ומשפט קצר וקולע.
 - טון נלהב ומרגש עם קריאות התלהבות, כמו חבר שממליץ בהתרגשות - אבל בשפה נקייה ומכובדת בלבד (בלי מילים כמו סקסי).
 ${facts.length ? `- אפשר לשלב את הנתונים האמיתיים האלה: ${facts.join(", ")}. אל תמציא מספרים אחרים.` : "- אל תמציא מספרים, מכירות או דירוגים."}
 ${recentOpenings.length ? `- אל תפתח כמו הפוסטים הקודמים: ${recentOpenings.map(o => `"${o}"`).join(" | ")}` : ""}
+- עברית טבעית ופשוטה, כמו ישראלי שכותב לחבר בוואטסאפ. בלי תרגומים מוזרים ובלי מטאפורות מפוצצות (אסור: "מקדש", "שאבתי מהמרחבים", "קסם", "מהפכה", "חוויה קולנועית").
+- אל תמציא מפרטים טכניים. מותר להזכיר רק נתון שמופיע בשם המוצר, ואם יש בו נתונים סותרים (למשל 4K וגם 1080P) - אל תזכיר אף אחד מהם.
+- אל תזכיר סרטים, סדרות, טלוויזיה, מוזיקה או בילויים - תתמקד בתועלת המעשית בבית, בעבודה, ברכב ובמשפחה.
 - אל תזכיר את הקהל בטקסט (בלי "למשפחה חרדית", "לבית שומר תורה" וכדומה) - פשוט תמליץ על המוצר.
 - בלי כותרות, בלי מחיר, בלי קישור ובלי שם המוצר בסוף (הם יתווספו אוטומטית).
 שם המוצר: ${title}`.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");   // חצי אימוג'י שבור = OpenAI דוחה את כל הבקשה
@@ -306,10 +310,10 @@ ${recentOpenings.length ? `- אל תפתח כמו הפוסטים הקודמים:
     // ניסיון חוזר אחד אם OpenAI נכשל רגעית (עומס / חיבור)
     let completion;
     try {
-      completion = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 1.0 });
+      completion = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0.8 });
     } catch (firstErr) {
       await new Promise(r => setTimeout(r, 3000));
-      completion = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 1.0 });
+      completion = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0.8 });
     }
     const body = completion.choices[0].message.content.trim();
     if (body.includes("REJECT")) return "REJECT";
