@@ -66,6 +66,15 @@ let sentProducts = new Set();
 if (fs.existsSync(SENT_FILE)) {
   try { sentProducts = new Set(JSON.parse(fs.readFileSync(SENT_FILE))); } catch(e) {}
 }
+// "טביעת אצבע" של שם המוצר - תופס את אותו מוצר גם כשמוכר אחר מפרסם אותו עם מספר מוצר אחר
+const SENT_TITLES_FILE = "./bot_data/sent_titles.json";
+function titleKey(title) {
+  return String(title || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(w => w.length > 2).slice(0, 7).join(" ");
+}
+let sentTitles = new Set();
+if (fs.existsSync(SENT_TITLES_FILE)) {
+  try { sentTitles = new Set(JSON.parse(fs.readFileSync(SENT_TITLES_FILE))); } catch(e) {}
+}
 
 // ניהול משתמשים - יצירת מנהל דיפולטיבי אם לא קיים
 let users = [{ username: "M", password: "1", role: "admin" }];
@@ -201,6 +210,7 @@ async function findCandidates(keyword, fromPage = 1, toPage = PAGES_PER_SOURCE) 
         if (seen.has(product.product_id) || sentProducts.has(product.product_id)) continue;
         seen.add(product.product_id);
         const title = (product.product_title || "").toLowerCase();
+        if (sentTitles.has(titleKey(title))) continue;      // אותו מוצר ממוכר אחר (מספר מוצר שונה, אותו שם)
         if (BLACKLIST_WORDS.some(word => title.includes(word))) continue;
         if (!isRelevant(title, keyword)) continue;
         const { min: price, max: maxPrice } = priceRange(product);
@@ -402,6 +412,8 @@ async function fetchDeal() {
           
           sentProducts.add(product.product_id);
           fs.writeFileSync(SENT_FILE, JSON.stringify([...sentProducts]));
+          sentTitles.add(titleKey(product.product_title));
+          fs.writeFileSync(SENT_TITLES_FILE, JSON.stringify([...sentTitles]));
           
           lastSentDealTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" });
           dealHistory.unshift({ time: lastSentDealTime.split(',')[1], title: product.product_title });
